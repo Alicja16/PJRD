@@ -13,13 +13,13 @@ eImpl xStrToImpl(const std::string& Impl)
 {
   std::string ImplL = xString::toLower(Impl);
   return ImplL == "simple"   ? eImpl::Simple   :
-         ImplL == "advanded" ? eImpl::Advanded :
+         ImplL == "advanded" ? eImpl::Advanced :
                                eImpl::INVALID  ;
 }
 std::string xImplToStr(eImpl Impl)
 {
   return Impl == eImpl::Simple   ? "Simple"   :
-         Impl == eImpl::Advanded ? "Advanded" :
+         Impl == eImpl::Advanced ? "Advanced" :
                                    "INVALID"  ;
 }
 eQTLa xStrToQTLa(const std::string& QTLa)
@@ -36,6 +36,40 @@ std::string xQTLaToStr(eQTLa QTLa)
          QTLa == eQTLa::Flat     ? "Flat"     :
          QTLa == eQTLa::SemiFlat ? "SemiFlat" :
                                    "INVALID"  ;
+}
+eCalkMd xStrToCalkMd(const std::string& CalkMd)
+{
+  std::string CalkMdL = xString::toLower(CalkMd);
+  return CalkMdL == "exact"  ? eCalkMd::Exact  :
+         CalkMdL == "approx" ? eCalkMd::Approx :
+                               eCalkMd::INVALID;
+}
+std::string xCalkMdToStr(eCalkMd CalkMd)
+{
+  switch(CalkMd)
+  {
+  case eCalkMd::Exact : return "Exact" ; 
+  case eCalkMd::Approx: return "Approx";
+  default: return "INVALID";
+  }
+}
+eLmbd xStrToLmbd(const std::string& Lmbd)
+{
+    std::string LmbdL = xString::toLower(Lmbd);
+  return LmbdL == "exhaustive"  ? eLmbd::Exhaustive  :
+         LmbdL == "approxexact" ? eLmbd::ApproxExact :
+         LmbdL == "approxfast"  ? eLmbd::ApproxFast  :
+                                  eLmbd::INVALID    ;
+}
+std::string xLmbdToStr(eLmbd Lmbd)
+{
+  switch(Lmbd)
+  {
+  case eLmbd::Exhaustive : return "Exhaustive" ; 
+  case eLmbd::ApproxExact: return "ApproxExact";
+  case eLmbd::ApproxFast : return "ApproxFast" ;
+  default: return "INVALID";
+  }
 }
 
 //=============================================================================================================================================================================

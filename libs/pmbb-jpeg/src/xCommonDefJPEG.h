@@ -9,6 +9,8 @@
 //=============================================================================================================================================================================
 #include "xCommonDefCMPR.h"
 
+#define PMBB_ALIGN_JPEG_BLK alignas(128)
+
 namespace PMBB_NAMESPACE::JPEG {
 
 //=============================================================================================================================================================================
@@ -25,7 +27,7 @@ enum class eImpl //JPEG implementation
 {
   INVALID  = NOT_VALID,
   Simple   = 0,
-  Advanded = 1,
+  Advanced = 1,
 };
 eImpl       xStrToImpl(const std::string& Impl);
 std::string xImplToStr(eImpl Impl             );
@@ -39,6 +41,25 @@ enum class eQTLa //JPEG Quantization Table Layout
 };
 eQTLa       xStrToQTLa(const std::string& QTLa);
 std::string xQTLaToStr(eQTLa QTLa             );
+
+enum class eCalkMd // calculation mode
+{
+  INVALID = NOT_VALID,
+  Exact ,
+  Approx,
+};
+eCalkMd     xStrToCalkMd(const std::string& CalkMd);
+std::string xCalkMdToStr(eCalkMd CalkMd);
+
+enum class eLmbd //lambda estimation mode
+{
+  INVALID     = NOT_VALID,
+  Exhaustive  = 0,
+  ApproxExact = 1,
+  ApproxFast  = 2,
+};
+eLmbd       xStrToLmbd(const std::string& Lmbd);
+std::string xLmbdToStr(eLmbd Lmbd);
 
 //=============================================================================================================================================================================
 

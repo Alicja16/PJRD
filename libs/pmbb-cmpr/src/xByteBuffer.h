@@ -1,5 +1,5 @@
 /*
-    SPDX-FileCopyrightText: 2019-2023 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2019-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: GPL-3.0-or-later
 */
 
@@ -7,6 +7,7 @@
 
 #include "xCommonDefCMPR.h"
 #include "xStream.h"
+#include "xMemoryAlign.h"
 #include <vector>
 #include <mutex>
 
@@ -14,7 +15,7 @@ namespace PMBB_NAMESPACE {
 
 //===============================================================================================================================================================================================================
 
-class xByteBuffer
+class PMBB_ALIGN_CACHE xByteBuffer
 {
 protected:
   byte*    m_Buffer = nullptr;
@@ -106,11 +107,13 @@ public:
   void     align            ();
 
   //read, write
-  uint32   write(std::ostream* Stream) const;
-  uint32   read (std::istream* Stream);
-  uint32   write(xStream* Stream            ) const;
-  uint32   read (xStream* Stream, int32 Size);
-  uint32   read (xStream* Stream            ) { return read(Stream, m_BufferSize); }
+  uint32   write (std::ostream* Stream) const;
+  uint32   read  (std::istream* Stream);
+  uint32   write (xStream* Stream            ) const;
+  uint32   read  (xStream* Stream, int32 Size);
+  uint32   read  (xStream* Stream            ) { return read(Stream, m_BufferSize); }
+  uint32   append(xStream* Stream, int32 Size);
+  uint32   append(xStream* Stream            ) { return append(Stream, getRemainingSize()); }
 
   //interfaces
   byte*       getReadPtr       (                 )       { return m_Buffer + m_DataOffset;}

@@ -1,11 +1,13 @@
 /*
-    SPDX-FileCopyrightText: 2019-2023 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2019-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 
 #include "xPicYUV.h"
 #include "xMemory.h"
+#include "xErrMsg.h"
 #include "xPixelOps.h"
+#include "xMarginOps.h"
 
 namespace PMBB_NAMESPACE {
 
@@ -45,6 +47,7 @@ void xPicYUV::create(int32V2 Size, int32 BitDepth, eCrF ChromaFormat, int32 Marg
     m_Stride          [c] = getWidth((eCmp)c) + (m_Margin << 1);
     m_Buffer          [c] = (uint16*)xMemory::xAlignedMallocPageAuto(m_BuffCmpNumBytesN[c]);
     m_Origin          [c] = m_Buffer[c] + (m_Margin * m_Stride[c]) + m_Margin;
+    if(m_Buffer[c] == nullptr) { xErrMsg::printError(fmt::format("TERRIBLE ERROR --> memory allocation failed in xPicYUV::create while using xMemory::xAlignedMallocPageAuto({})", m_BuffCmpNumBytesN[c])); abort(); }
   }  
 }
 void xPicYUV::destroy()
@@ -98,9 +101,9 @@ bool xPicYUV::check(const std::string& Name) const
   {
     if(!Correct[c])
     {
-      fmt::print("FILE BROKEN " + Name + " (CMP={:d})\n", c);
+      fmt::print("FILE BROKEN {} (CMP={:d})\n", Name, c);
       std::string Msg = xPixelOps::FindOutOfRange(m_Origin[c], getStride((eCmp)c), getWidth((eCmp)c), getHeight((eCmp)c), m_BitDepth, -1);
-      fmt::print(Msg);
+      fmt::print("{}", Msg);
       return false;
     }
   }
@@ -115,9 +118,12 @@ void xPicYUV::conceal()
   }
   m_IsMarginExtended = false;
 }
-void xPicYUV::extend()
+void xPicYUV::extend(eMrgExt MarginExtendMode)
 {
-  for(int32 c = 0; c < m_NumCmps; c++) { xPixelOps::ExtendMargin(m_Origin[c], getStride((eCmp)c), getWidth((eCmp)c), getHeight((eCmp)c), m_Margin); }
+  for(int32 c = 0; c < m_NumCmps; c++)
+  { 
+    xMarginOps::ExtendMargin(m_Origin[c], getStride((eCmp)c), getWidth((eCmp)c), getHeight((eCmp)c), m_Margin, std::numeric_limits<uint16>::max(), MarginExtendMode);
+  }
   m_IsMarginExtended = true;
 }
 

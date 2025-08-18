@@ -1,11 +1,11 @@
 /*
-    SPDX-FileCopyrightText: 2019-2023 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2019-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 
 #pragma once
 
-#include "xCommonDefPMBB-BASE.h"
+#include "xCommonDefBASE.h"
 #include <string>
 #include <sstream>
 #include <vector>
@@ -63,7 +63,7 @@ public:
     std::transform(VecStr.cbegin(), VecStr.cend(), std::back_inserter(VecXXX), [&](XXX X) -> std::string { return std::to_string(X); });
     return VecXXX;
   }
-
+  static std::string formatBytes(uint64 Bytes);
 
 };
 

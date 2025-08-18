@@ -70,15 +70,29 @@ public:
 
 //=====================================================================================================================================================================================
 
+#if X_SIMD_CAN_USE_NEON
+#define X_CAN_USE_NEON 1
+class xQuantNEON
+{
+public:
+  static void QuantScale(int16* restrict Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Shift);
+  static void InvScale  (int16* restrict Dst, const int16* Src, const uint16* QuantCoeff);
+};
+#else //X_SIMD_CAN_USE_NEON
+#define X_CAN_USE_NEON 0
+#endif //X_SIMD_CAN_USE_NEON
+
+//=====================================================================================================================================================================================
+
 class xQuantizer
 {
 protected:
-  uint16 m_QuantCoeff[64];
+  uint16 m_QuantCoeffR[64];
 
-  uint16 m_Reciprocal[64];
-  uint16 m_Correction[64];
-  uint16 m_Scale     [64];
-  uint16 m_Shift     [64];
+  uint16 m_ReciprocalR[64];
+  uint16 m_CorrectionR[64];
+  uint16 m_ScaleR     [64];
+  uint16 m_ShiftR     [64];
 
 public:
   void Init(eCmp Cmp, int32 Quality, eQTLa QuantTabLayout = eQTLa::Default);
@@ -87,17 +101,17 @@ public:
   std::string FormatCoeffs(const std::string& Prefix) const;
 
 #if X_CAN_USE_AVX512
-  void QuantScale(int16* Dst, const int16* Src) const { xQuantAVX512::QuantScale(Dst, Src, m_Correction, m_Reciprocal, m_Scale); }
-  void InvScale  (int16* Dst, const int16* Src) const { xQuantAVX512::InvScale  (Dst, Src, m_QuantCoeff                       ); }
+  void QuantScale(int16* Dst, const int16* Src) const { xQuantAVX512::QuantScale(Dst, Src, m_CorrectionR, m_ReciprocalR, m_ScaleR); }
+  void InvScale  (int16* Dst, const int16* Src) const { xQuantAVX512::InvScale  (Dst, Src, m_QuantCoeffR                         ); }
 #elif X_CAN_USE_AVX
-  void QuantScale(int16* Dst, const int16* Src) const { xQuantAVX   ::QuantScale(Dst, Src, m_Correction, m_Reciprocal, m_Scale); }
-  void InvScale  (int16* Dst, const int16* Src) const { xQuantAVX   ::InvScale  (Dst, Src, m_QuantCoeff                       ); }
+  void QuantScale(int16* Dst, const int16* Src) const { xQuantAVX   ::QuantScale(Dst, Src, m_CorrectionR, m_ReciprocalR, m_ScaleR); }
+  void InvScale  (int16* Dst, const int16* Src) const { xQuantAVX   ::InvScale  (Dst, Src, m_QuantCoeffR                         ); }
 #elif X_CAN_USE_SSE
-  void QuantScale(int16* Dst, const int16* Src) const { xQuantSSE   ::QuantScale(Dst, Src, m_Correction, m_Reciprocal, m_Scale); }
-  void InvScale  (int16* Dst, const int16* Src) const { xQuantSSE   ::InvScale  (Dst, Src, m_QuantCoeff                       ); }
+  void QuantScale(int16* Dst, const int16* Src) const { xQuantSSE   ::QuantScale(Dst, Src, m_CorrectionR, m_ReciprocalR, m_ScaleR); }
+  void InvScale  (int16* Dst, const int16* Src) const { xQuantSSE   ::InvScale  (Dst, Src, m_QuantCoeffR                         ); }
 #else
-  void QuantScale(int16* Dst, const int16* Src) const { xQuantSTD   ::QuantScale(Dst, Src, m_Correction, m_Reciprocal, m_Shift); }
-  void InvScale  (int16* Dst, const int16* Src) const { xQuantSTD   ::InvScale  (Dst, Src, m_QuantCoeff                       ); }
+  void QuantScale(int16* Dst, const int16* Src) const { xQuantSTD   ::QuantScale(Dst, Src, m_CorrectionR, m_ReciprocalR, m_ShiftR); }
+  void InvScale  (int16* Dst, const int16* Src) const { xQuantSTD   ::InvScale  (Dst, Src, m_QuantCoeffR                         ); }
 #endif
 
 protected:
@@ -119,9 +133,16 @@ public:
 
   const xQuantizer& getQuantizer(int32 QuantTableId) const { return m_Quantizers[QuantTableId]; }
 
-  void  QuantScale(int16* Dst, const int16* Src, int32 QuantTableId) { m_Quantizers[QuantTableId].QuantScale(Dst, Src); }
-  void  InvScale  (int16* Dst, const int16* Src, int32 QuantTableId) { m_Quantizers[QuantTableId].InvScale  (Dst, Src); }
+  void  QuantScale(int16* Dst, const int16* Src, int32 QuantTableId) const { m_Quantizers[QuantTableId].QuantScale(Dst, Src); }
+  void  InvScale  (int16* Dst, const int16* Src, int32 QuantTableId) const { m_Quantizers[QuantTableId].InvScale  (Dst, Src); }
 };
+
+//=====================================================================================================================================================================================
+
+#undef X_CAN_USE_SSE
+#undef X_CAN_USE_AVX
+#undef X_CAN_USE_AVX512
+#undef X_CAN_USE_NEON
 
 //=====================================================================================================================================================================================
 

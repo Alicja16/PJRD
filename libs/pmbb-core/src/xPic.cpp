@@ -5,7 +5,9 @@
 
 #include "xPic.h"
 #include "xMemory.h"
+#include "xErrMsg.h"
 #include "xPixelOps.h"
+#include "xMarginOps.h"
 #include <cassert>
 #include <cstring>
 
@@ -25,6 +27,7 @@ void xPicP::create(int32V2 Size, int32 BitDepth, int32 Margin)
   {
     m_Buffer[c] = (uint16*)xMemory::xAlignedMallocPageAuto(m_BuffCmpNumBytes);
     m_Origin[c] = m_Buffer[c] + (m_Margin * m_Stride) + m_Margin;
+    if(m_Buffer[c] == nullptr) { xErrMsg::printError(fmt::format("TERRIBLE ERROR --> memory allocation failed in xPicP::create while using xMemory::xAlignedMallocPageAuto({})", m_BuffCmpNumBytes)); abort(); }
   }  
 }
 void xPicP::destroy()
@@ -71,9 +74,9 @@ bool xPicP::check(const std::string& Name) const
   {
     if(!Correct[c])
     {
-      fmt::print("FILE BROKEN " + Name + " (CMP={:d})\n", c);
+      fmt::print("FILE BROKEN {} (CMP={:d})\n", Name, c);
       std::string Msg = xPixelOps::FindOutOfRange(m_Origin[c], m_Stride, m_Width, m_Height, m_BitDepth, -1);
-      fmt::print(Msg);
+      fmt::print("{}", Msg);
       return false;
     }
   }
@@ -88,9 +91,12 @@ void xPicP::conceal()
   }
   m_IsMarginExtended = false;
 }
-void xPicP::extend()
+void xPicP::extend(eMrgExt MarginExtendMode)
 {
-  for(int32 c = 0; c < m_NumCmps; c++) { xPixelOps::ExtendMargin(m_Origin[c], m_Stride, m_Width, m_Height, m_Margin); }
+  for(int32 c = 0; c < m_NumCmps; c++)
+  {
+    xMarginOps::ExtendMargin(m_Origin[c], m_Stride, m_Width, m_Height, m_Margin, std::numeric_limits<uint16>::max(), MarginExtendMode);
+  }
   m_IsMarginExtended = true;
 }
 
@@ -164,6 +170,39 @@ bool xPicP::swapComponents(eCmp CmpIdA, eCmp CmpIdB)
 }
 
 //===============================================================================================================================================================================================================
+// xPicPlanarRental - planar
+//===============================================================================================================================================================================================================
+void xPicPlanarRental::create(int32V2 Size, int32 BitDepth, int32 Margin, uintSize InitSize, uintSize SizeLimit)
+{
+  m_Mutex.lock();
+  m_Size         = Size;
+  m_BitDepth     = BitDepth;
+  m_Margin       = Margin;  
+  m_CreatedUnits = 0;
+  m_SizeLimit    = SizeLimit;
+
+  for(uintSize i=0; i<InitSize; i++) { xCreateNewUnit(); }
+  m_Mutex.unlock();
+}
+void xPicPlanarRental::xCreateNewUnit()
+{
+  xPicP* Tmp = new xPicP;
+  Tmp->create(m_Size, m_BitDepth, m_Margin);
+  m_Buffer.push_back(Tmp);
+  m_CreatedUnits++;
+}
+void xPicPlanarRental::xDestroyUnit()
+{
+  if(!m_Buffer.empty())
+  {
+    xPicP* Tmp = (xPicP*)m_Buffer.back();
+    m_Buffer.pop_back();
+    Tmp->destroy();
+    delete Tmp;
+  }
+}
+
+//===============================================================================================================================================================================================================
 // xPicI
 //===============================================================================================================================================================================================================
 void xPicI::create(int32V2 Size, int32 BitDepth, int32 Margin)
@@ -172,6 +211,7 @@ void xPicI::create(int32V2 Size, int32 BitDepth, int32 Margin)
 
   m_Buffer = (uint16*)xMemory::xAlignedMallocPageAuto(m_BuffCmpNumBytes * c_MaxNumCmps);
   m_Origin = m_Buffer + (m_Margin * (m_Stride << 2)) + (m_Margin << 2);
+  if(m_Buffer == nullptr) { xErrMsg::printError(fmt::format("TERRIBLE ERROR --> memory allocation failed in xPicI::create while using xMemory::xAlignedMallocPageAuto({})", m_BuffCmpNumBytes * c_MaxNumCmps)); abort(); }
 }
 void xPicI::destroy()
 {

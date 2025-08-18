@@ -10,7 +10,7 @@ namespace PMBB_NAMESPACE::JPEG {
 //=============================================================================================================================================================================
 // xQuantFLT
 //=============================================================================================================================================================================
-void xQuantFLT::QuantScale(int16* Dst, const int16* Src, const uint16* Quant, const uint16*, const uint16*)
+void xQuantFLT::QuantScale(int16* restrict Dst, const int16* Src, const uint16* Quant, const uint16*, const uint16*)
 {
   for(int32 i=0; i < 64; i++)
   {
@@ -19,7 +19,7 @@ void xQuantFLT::QuantScale(int16* Dst, const int16* Src, const uint16* Quant, co
     Dst[i] = (int16)round(CoeffDst);
   }
 }
-void xQuantFLT::InvScale(int16* Dst, const int16* Src, const uint16* Quant)
+void xQuantFLT::InvScale(int16* restrict Dst, const int16* Src, const uint16* Quant)
 {
   for(int32 i=0; i < 64; i++)
   {
@@ -31,7 +31,7 @@ void xQuantFLT::InvScale(int16* Dst, const int16* Src, const uint16* Quant)
 //=============================================================================================================================================================================
 // xQuantSTD
 //=============================================================================================================================================================================
-void xQuantSTD::QuantScale(int16* Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Shift)
+void xQuantSTD::QuantScale(int16* restrict Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Shift)
 {
   for(int32 i=0; i < 64; i++)
   {
@@ -43,7 +43,7 @@ void xQuantSTD::QuantScale(int16* Dst, const int16* Src, const uint16* Correctio
     Dst[i] = (int16)CoeffDst;
   }
 }
-void xQuantSTD::InvScale(int16* Dst, const int16* Src, const uint16* Quant)
+void xQuantSTD::InvScale(int16* restrict Dst, const int16* Src, const uint16* Quant)
 {
   for(int32 i=0; i < 64; i++)
   {
@@ -57,7 +57,7 @@ void xQuantSTD::InvScale(int16* Dst, const int16* Src, const uint16* Quant)
 // xQuantSSE
 //=============================================================================================================================================================================
 #if X_SIMD_CAN_USE_SSE
-void xQuantSSE::QuantScale(int16* Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Scale)
+void xQuantSSE::QuantScale(int16* restrict Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Scale)
 {
   const __m128i OneV = _mm_set1_epi16(1);
 
@@ -79,13 +79,13 @@ void xQuantSSE::QuantScale(int16* Dst, const int16* Src, const uint16* Correctio
     _mm_storeu_si128((__m128i*)(Dst + i), CoeffV);
   }
 }
-void xQuantSSE::InvScale(int16* Dst, const int16* Src, const uint16* QuantCoeff)
+void xQuantSSE::InvScale(int16* restrict Dst, const int16* Src, const uint16* QuantCoeff)
 {
   for(int32 i=0; i < 64; i+=8)
   {
     __m128i CoeffV = _mm_loadu_si128((__m128i*)(Src        + i));
     __m128i QuantV = _mm_loadu_si128((__m128i*)(QuantCoeff + i));
-    CoeffV = _mm_mullo_epi16(QuantV, CoeffV);
+    CoeffV = _mm_mullo_epi16(CoeffV, QuantV);
     _mm_storeu_si128((__m128i*)(Dst + i), CoeffV);
   }
 }
@@ -95,7 +95,7 @@ void xQuantSSE::InvScale(int16* Dst, const int16* Src, const uint16* QuantCoeff)
 // xQuantAVX
 //=============================================================================================================================================================================
 #if X_SIMD_CAN_USE_AVX
-void xQuantAVX::QuantScale(int16* Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Scale)
+void xQuantAVX::QuantScale(int16* restrict Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Scale)
 {
   const __m256i OneV = _mm256_set1_epi16(1);
 
@@ -110,20 +110,20 @@ void xQuantAVX::QuantScale(int16* Dst, const int16* Src, const uint16* Correctio
     __m256i SignV  = _mm256_sign_epi16(OneV, CoeffV);
     CoeffV = _mm256_abs_epi16(CoeffV);
     //quant
-    CoeffV = _mm256_mulhi_epu16(_mm256_mulhi_epu16(_mm256_add_epi16(CoeffV, CorrcV), RecipV), ScaleV);
+    CoeffV = _mm256_mulhi_epu16(_mm256_mulhi_epu16(_mm256_add_epi16(CoeffV, CorrcV), RecipV), ScaleV); //try _mm_sllv_epi32
     //restore sign
     CoeffV = _mm256_sign_epi16(CoeffV, SignV);
     //write
     _mm256_storeu_si256((__m256i*)(Dst + i), CoeffV);
   }
 }
-void xQuantAVX::InvScale(int16* Dst, const int16* Src, const uint16* QuantCoeff)
+void xQuantAVX::InvScale(int16* restrict Dst, const int16* Src, const uint16* QuantCoeff)
 {
   for(int32 i=0; i < 64; i+=16)
   {
     __m256i CoeffV = _mm256_loadu_si256((__m256i*)(Src        + i));
     __m256i QuantV = _mm256_loadu_si256((__m256i*)(QuantCoeff + i));
-    CoeffV = _mm256_mullo_epi16(QuantV, CoeffV);
+    CoeffV = _mm256_mullo_epi16(CoeffV, QuantV);
     _mm256_storeu_si256((__m256i*)(Dst + i), CoeffV);
   }
 }
@@ -143,7 +143,7 @@ void xQuantAVX512::QuantScale(int16* Dst, const int16* Src, const uint16* Correc
     __m512i ReciprocalV = _mm512_loadu_si512((__m512i*)(Reciprocal + i));
     __m512i ScaleV      = _mm512_loadu_si512((__m512i*)(Scale      + i));
     //extract sign
-    uint32 SignMask   = _mm512_cmpgt_epi16_mask(CoeffSrcV, _mm512_setzero_si512());
+    uint32  SignMask  = _mm512_cmpgt_epi16_mask(CoeffSrcV, _mm512_setzero_si512());
     __m512i CoeffAbsV = _mm512_abs_epi16(CoeffSrcV);
     //quant
     __m512i CoeffQntV = _mm512_mulhi_epu16(_mm512_mulhi_epu16(_mm512_add_epi16(CoeffAbsV, CorrectionV), ReciprocalV), ScaleV);
@@ -160,11 +160,52 @@ void xQuantAVX512::InvScale(int16* Dst, const int16* Src, const uint16* Quant)
   {
     __m512i CoeffSrcV = _mm512_loadu_si512((__m512i*)(Src   + i));
     __m512i QuantV    = _mm512_loadu_si512((__m512i*)(Quant + i));
-    __m512i CoeffDstV = _mm512_mullo_epi16(QuantV, CoeffSrcV);
+    __m512i CoeffDstV = _mm512_mullo_epi16(CoeffSrcV, QuantV);
     _mm512_storeu_si512((__m512i*)(Dst + i), CoeffDstV);
   }
 }
 #endif //X_SIMD_CAN_USE_AVX
+
+//=============================================================================================================================================================================
+// xQuantNEON
+//=============================================================================================================================================================================
+#if X_SIMD_CAN_USE_NEON
+void xQuantNEON::QuantScale(int16* restrict Dst, const int16* Src, const uint16* Correction, const uint16* Reciprocal, const uint16* Shift)
+{
+  for(int32 i=0; i < 64; i+=8)
+  {
+    //load
+    int16x8_t  CoeffV = vld1q_s16((int16*)(Src        + i));
+    uint16x8_t CorrcV = vld1q_u16(        (Correction + i));
+    uint16x8_t RecipV = vld1q_u16(        (Reciprocal + i));
+    int16x8_t  ShiftV = vnegq_s16(vld1q_s16((int16*)(Shift + i))); //negate shift since right shift wil be performed as "negative" left shift
+    //extract sign
+    int16x8_t  SignMaskV  = vshrq_n_s16(CoeffV, 31);
+    uint16x8_t CoeffAbsV  = vreinterpretq_u16_s16(vabsq_s16(CoeffV));
+    //quant
+    uint16x8_t CoeffV_S1  = vaddq_u16(CoeffAbsV, CorrcV);
+    uint32x4_t CoeffV_S2A = vmull_u16     (vget_low_u16(CoeffV_S1), vget_low_u16(RecipV));
+    uint32x4_t CoeffV_S2B = vmull_high_u16(CoeffV_S1              , RecipV              );
+    uint32x4_t CoeffV_S3A = vshlq_u32(CoeffV_S2A, vmovl_s16(vget_low_s16(ShiftV)));
+    uint32x4_t CoeffV_S3B = vshlq_u32(CoeffV_S2B, vmovl_high_s16(ShiftV));
+    uint16x8_t QuantV     = vqmovn_high_u32(vqmovn_u32(CoeffV_S3A), CoeffV_S3B);
+    //restore sign
+    int16x8_t  CoeffVr    = vsubq_s16(veorq_s16(vreinterpretq_s16_u16(QuantV), SignMaskV), SignMaskV); //Mask0: (Val ^ 0) - 0 = Val; Mask0x1111: (Val ^ -1) - -1 = (~Val) + 1 = -Val
+    //write
+    vst1q_s16((Dst + i), CoeffVr);
+  }
+}
+void xQuantNEON::InvScale(int16* restrict Dst, const int16* Src, const uint16* QuantCoeff)
+{
+  for(int32 i=0; i < 64; i+=8)
+  {
+    int16x8_t  CoeffV = vld1q_s16((Src        + i));
+    uint16x8_t QuantV = vld1q_u16((QuantCoeff + i));
+    CoeffV = vmulq_s16(CoeffV, vreinterpretq_s16_u16(QuantV));
+    vst1q_s16((Dst + i), CoeffV);
+  }
+}
+#endif //X_SIMD_CAN_USE_NEON
 
 //=============================================================================================================================================================================
 // xQuantizer
@@ -186,8 +227,8 @@ void xQuantizer::xInit(const uint8* QuantTable)
   {
     int32  ZigZagIdx = xJPEG_Constants::m_InvScanZigZag[i];
     uint16 QuantCoeff = QuantTable[ZigZagIdx];
-    m_QuantCoeff[i] = QuantCoeff;
-    xComputeReciprocal(QuantCoeff<<4, m_Reciprocal[i], m_Correction[i], m_Scale[i], m_Shift[i]);
+    m_QuantCoeffR[i] = QuantCoeff;
+    xComputeReciprocal(QuantCoeff<<xJPEG_Constants::c_FwdTransformHeadroom, m_ReciprocalR[i], m_CorrectionR[i], m_ScaleR[i], m_ShiftR[i]);
   }
 }
 int32 xQuantizer::xComputeReciprocal(uint16 Divisor, uint16& Reciprocal, uint16& Correction, uint16& Scale, uint16& Shift)
@@ -209,7 +250,7 @@ int32 xQuantizer::xComputeReciprocal(uint16 Divisor, uint16& Reciprocal, uint16&
 
     int32 c = Divisor / 2; /* for rounding */
 
-    if      (fr == 0            ) { fq >>= 1; r--; } //divisor is power of two - fq will be one bit too large to fit in DCTELEM, so adjust
+    if      (fr == 0            ) { fq >>= 1; r--; } //original divisor is power of two - Reciprocal will be one bit too large to fit in uint16
     else if (fr <= (Divisor / 2)) { c++;           } //fractional part is < 0.5 
     else                          { fq++;          } //fractional part is > 0.5
 
@@ -234,7 +275,7 @@ std::string xQuantizer::FormatCoeffs(const std::string& Prefix) const
     Result += Prefix;
     for(int32 x = 0; x < xJPEG_Constants::c_BlockSize; x++)
     {
-      Result += fmt::format("{:>3d} ", m_QuantCoeff[(y << xJPEG_Constants::c_Log2BlockSize) + x]);
+      Result += fmt::format("{:>3d} ", m_QuantCoeffR[(y << xJPEG_Constants::c_Log2BlockSize) + x]);
     }
     Result += "\n";
   }

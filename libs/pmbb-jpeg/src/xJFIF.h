@@ -1,11 +1,13 @@
 /*
-    SPDX-FileCopyrightText: 2020-2024 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
+    SPDX-FileCopyrightText: 2020-2026 Jakub Stankowski <jakub.stankowski@put.poznan.pl>
     SPDX-License-Identifier: BSD-3-Clause
 */
 #pragma once
 #include "xCommonDefJPEG.h"
 #include "xJPEG_Constants.h"
+#include "xJPEG_MarkerUtils.h"
 #include "xByteBuffer.h"
+#include "xVec.h"
 #include <numeric>
 #include <vector>
 #include <array>
@@ -19,38 +21,36 @@ class xJFIF
 public:
   using tStr   = std::string;
   using tByteV = std::vector<byte>;
+  using tPosV  = std::vector<int64>;
+
+  static constexpr int32  c_SeekBufferSize = 4194304; //4MB = 1024 pages
+
   static constexpr uint32 c_JFIF = xMakeFourCC('J', 'F', 'I', 'F');
 
   enum class eMarker
   {
-    SOI   = 0xD8, //Start Of Image 
-
-    APP0  = 0xE0, //JFIF APP0 segment marker, 
-    APP15 = 0xEF, 
-
-    DRI   = 0xDD, //Define Restart Interval
-
-    SOF0  = 0xC0, //Start Of Frame (baseline JPEG)
-    SOF1  = 0xC1,
-    SOF2  = 0xC2,
-    SOF3  = 0xC3,
-    SOF5  = 0xC5,
-    SOF6  = 0xC6,
-    SOF7  = 0xC7,
-    JPG   = 0xC8,
-    SOF9  = 0xC9,
-    SOF10 = 0xCA,
-    SOF11 = 0xCB,
-    SOF13 = 0xCD,
-    SOF14 = 0xCE,
-    SOF15 = 0xCF,
+    //Start Of Frame markers, non-differential, Huffman coding
+    SOF0  = 0xC0, //Start Of Frame - Baseline DCT           , Huffman coding
+    SOF1  = 0xC1, //Start Of Frame - Extended sequential DCT, Huffman coding
+    SOF2  = 0xC2, //Start Of Frame - Progressive DCT        , Huffman coding
+    SOF3  = 0xC3, //Start Of Frame - Lossless (sequential)  , Huffman coding
+    //Start Of Frame markers, differential, Huffman coding
+    SOF5  = 0xC5, //Start Of Frame - Differential sequential DCT
+    SOF6  = 0xC6, //Start Of Frame - Differential progressive DCT
+    SOF7  = 0xC7, //Start Of Frame - Differential lossless (sequential)
+    //Start Of Frame markers, non-differential, arithmetic coding
+    JPG   = 0xC8, //Start Of Frame - Reserved for JPEG extensions
+    SOF9  = 0xC9, //Start Of Frame - Extended sequential DCT, arithmetic coding
+    SOF10 = 0xCA, //Start Of Frame - Progressive DCT        , arithmetic coding
+    SOF11 = 0xCB, //Start Of Frame - Lossless (sequential)  , arithmetic coding
+    //Start Of Frame markers, differential, arithmetic coding
+    SOF13 = 0xCD, //Start Of Frame - Differential sequential DCT
+    SOF14 = 0xCE, //Start Of Frame - Differential progressive DCT
+    SOF15 = 0xCF, //Start Of Frame - Differential lossless (sequential)
 
     DHT   = 0xC4, //Define Huffman Table 
     DAC   = 0xCC, //Define Arithmetic Table
-    DQT   = 0xDB, //Define Quantization Table
-     
-    SOS   = 0xDA, //Start Of Scan 
-     
+         
     RST0  = 0xD0, //Restart(s)
     RST1  = 0xD1,
     RST2  = 0xD2,
@@ -60,79 +60,50 @@ public:
     RST6  = 0xD6,
     RST7  = 0xD7,
 
+    SOI   = 0xD8, //Start Of Image 
     EOI   = 0xD9, //End Of Image
+    SOS   = 0xDA, //Start Of Scan
+    DQT   = 0xDB, //Define Quantization Table
+    DNL   = 0xDC, //Define number of lines
+    DRI   = 0xDD, //Define Restart Interval
+    DHP   = 0xDE, //Define hierarchical progression
+    EXP   = 0xDF, //Expand reference component(s)
 
-    DNL   = 0xDC,
-    DHP   = 0xDE,
-    EXP   = 0xDF,
-    JPG0  = 0xF0,
-    JPG13 = 0xFD,
-    COM   = 0xFE,
-    TEM   = 0x01,
+    APP0  = 0xE0, //JFIF APP0 segment marker 
+    //.....
+    APP15 = 0xEF, //JFIF APP15 segment marker
+
+    JPG0  = 0xF0, //Reserved for JPEG extensions
+    //.....
+    JPG13 = 0xFD, //Reserved for JPEG extensions
+
+    COM   = 0xFE, //Comment
+    TEM   = 0x01, //For temporary private use in arithmetic coding (???)
+
+    RES02 = 0x02, //Reserved First
+    //.....
+    RESBF = 0xBF, //Reserved Last
 
     ERR   = 0x00,
   };
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-  class xFileParser
+  enum class eEntropyTableClass : int8
   {
-  protected:
-    static const int32 m_BufferSize = 4194304; //4MB = 1024 pages
-
-  protected:
-    xStream*    m_File;
-    int64       m_BufferFilePos;
-    xByteBuffer m_Buffer;
-
-  public:
-    void create(xStream* File)
-    {
-      m_File          = File;
-      m_BufferFilePos = NOT_VALID;
-      m_Buffer.create(m_BufferSize);
-    }
-    void destroy()
-    {
-      m_Buffer.destroy();
-      m_File = nullptr;
-    }
-    int64 SeekNextSegment(eMarker Marker)
-    {
-      int64 CurrFilePosiotion = m_File->tellR();
-      if(m_BufferFilePos != CurrFilePosiotion) //reset
-      {
-        m_Buffer.reset();
-        m_BufferFilePos = CurrFilePosiotion;
-        int64 Readed = m_Buffer.read(m_File);
-        if(Readed == 0) { return NOT_VALID; }
-      }
-      while(true)
-      {        
-        int64 PositionInBuffer = FindSegment(&m_Buffer, Marker);
-
-        if(PositionInBuffer == NOT_VALID)
-        {
-          //try to load more
-          if(m_File->end()) { return NOT_VALID; }
-          m_File->seekR(-1, xStream::eSeek::Cur);
-          CurrFilePosiotion--;
-          m_BufferFilePos = CurrFilePosiotion;
-          int64 Readed = m_Buffer.read(m_File);
-          if(Readed == 0) { return NOT_VALID; }
-        }
-        else
-        {
-          int64 PositionInFile = m_BufferFilePos + PositionInBuffer;
-          m_File->seekR(PositionInFile, xStream::eSeek::Beg);
-          m_Buffer.modifyRead((int32)PositionInBuffer);
-          m_BufferFilePos = PositionInFile;
-          return PositionInFile;
-        }
-      }
-      return NOT_VALID;
-    }    
+    Invalid = NOT_VALID,
+    DC = 0,
+    AC = 1,
   };
+
+  static tStr xEntropyTableClass2Str(eEntropyTableClass Class)
+  {
+    switch(Class)
+    {
+    case eEntropyTableClass::Invalid: return "Invalid";
+    case eEntropyTableClass::DC     : return "DC"     ;
+    case eEntropyTableClass::AC     : return "AC"     ;
+    default                         : return "Unknown";
+    }
+  }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -150,10 +121,10 @@ public:
 
   public:
     int32 Absorb(xByteBuffer* Input , int32 SegmentLength);
-    int32 Emit  (xByteBuffer* Output); 
+    int32 Emit  (xByteBuffer* Output) const; 
     void  InitDefault();
     bool  Validate   ();
-    int32 getLength  () { return 16 + m_ThumbnailSizeX * m_ThumbnailSizeY * 3; }
+    int32 getLength  () const { return 16 + m_ThumbnailSizeX * m_ThumbnailSizeY * 3; }
   };
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -185,9 +156,10 @@ public:
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-  class xSOF0
+  class xSOF
   {
   protected:
+    int32  m_Type          = NOT_VALID;
     int32  m_Width         = NOT_VALID;
     int32  m_Height        = NOT_VALID;
     int32  m_BitDepth      = NOT_VALID;
@@ -199,7 +171,7 @@ public:
   public:
     int32  Absorb   (xByteBuffer* Input );
     int32  Emit     (xByteBuffer* Output) const; 
-    void   Init     (int32 Height, int32 Width, int32 BitDepth, eCrF ChromaFormat, int32 NumQuantTables);
+    void   Init     (int32 Type, int32 Height, int32 Width, int32 BitDepth, eCrF ChromaFormat, int32 NumQuantTables);
     bool   Validate () const;
     int32  getLength() const { return 8 + m_NumComponents * 3; }
 
@@ -208,7 +180,9 @@ public:
     int8   GetSamplingFactorH(int32 Idx) const { return ((m_SamplingFactor[Idx] & 0xF0) >> 4); }
     int8   GetSamplingFactorV(int32 Idx) const { return ( m_SamplingFactor[Idx] & 0x0F);       }
            
-  public:  
+  public:
+    void  setType          (int32 Type         )       { m_Type = Type; }
+    int32 getType          (                   ) const { return m_Type; }
     void  setWidth         (int32 Width        )       { m_Width = Width; }
     int32 getWidth         (                   ) const { return m_Width; }
     void  setHeight        (int32 Height       )       { m_Height = Height; }
@@ -223,6 +197,17 @@ public:
     int32 getSamplingFactor(                      eCmp  Cmp) const { return m_SamplingFactor[(int32)Cmp]; }
     void  setQuantTableId  (int32 QuantTableId,   eCmp  Cmp)       { m_QuantTableId[(int32)Cmp] = QuantTableId; }
     int32 getQuantTableId  (                      eCmp  Cmp) const { return m_QuantTableId[(int32)Cmp]; }
+
+    static bool isSOF(eMarker Marker)
+    {
+      return (((int32)Marker >= (int32)eMarker::SOF0  && (int32)Marker <= (int32)eMarker::SOF3 ) ||
+              ((int32)Marker >= (int32)eMarker::SOF5  && (int32)Marker <= (int32)eMarker::SOF7 ) ||
+              ((int32)Marker >= (int32)eMarker::SOF9  && (int32)Marker <= (int32)eMarker::SOF11) ||
+              ((int32)Marker >= (int32)eMarker::SOF13 && (int32)Marker <= (int32)eMarker::SOF15));
+    }
+
+    bool isBaseline() const { return m_Type == (int32)eMarker::SOF0                                  ; }
+    bool isExtended() const { return m_Type == (int32)eMarker::SOF1 || m_Type == (int32)eMarker::SOF9; }
   };
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -230,40 +215,43 @@ public:
   class xHuffTable
   {
   public:
-    using tCodeL = std::array<byte, 16>;
-
-    enum class eHuffClass : int8
-    {
-      Invalid = NOT_VALID,
-      DC = 0,
-      AC = 1,
-    };
+    using tCodeL = std::array<byte, xJPEG_Constants::c_NumCodeLenghts>;
+    using tClass = eEntropyTableClass;
 
   protected:
-    uint8      m_Idx   = 0;
-    eHuffClass m_Class = eHuffClass::Invalid;
-    tCodeL     m_CodeLengths = { 0 };
-    tByteV     m_CodeSymbols;
+    uint8  m_Idx         = 0              ; //Th
+    tClass m_Class       = tClass::Invalid; //Tc
+    tCodeL m_CodeLengths = { 0 }          ; //Li
+    tByteV m_CodeSymbols                  ; //Vij
 
   public:
     int32 Absorb     (xByteBuffer* Input );
     int32 Emit       (xByteBuffer* Output) const; 
-    void  InitDefault(uint8 Idx, eHuffClass Class, eCmp Cmp);
+    void  InitDefault(uint8 Idx, tClass Class, eCmp Cmp);
+    void  InitCustom (uint8 Idx, tClass Class, const uint8* LengthTable);
     bool  Validate   () const;
-    int32 getLength  () const { return 1 + 16 + (int32)m_CodeSymbols.size(); }
+    tStr  Format     (const tStr& Prefix = "  ") const;
+    int32 getLength  () const { return 1 + xJPEG_Constants::c_NumCodeLenghts + (int32)m_CodeSymbols.size(); }
 
   public:
-    int32      getIdx  (         ) const { return m_Idx;   }
-    void       setIdx  (int32 Idx)       { m_Idx = (uint8)Idx;   }
-    eHuffClass getClass(             ) const { return m_Class; }
-    void       setClass(eHuffClass HC)       { m_Class = HC; }
+    int32  getIdx  (         ) const { return m_Idx;   }
+    void   setIdx  (int32 Idx)       { m_Idx = (uint8)Idx;   }
+    tClass getClass(         ) const { return m_Class; }
+    void   setClass(tClass HC)       { m_Class = HC; }
     
     const tCodeL& getCodeLengths() const { return m_CodeLengths; }
     const tByteV& getCodeSymbols() const { return m_CodeSymbols; }
 
-    bool isDC() const { return (m_Class == eHuffClass::DC);}
-    bool isAC() const { return (m_Class == eHuffClass::AC);}
+    bool isDC() const { return (m_Class == tClass::DC);}
+    bool isAC() const { return (m_Class == tClass::AC);}
+
+    int32        getMaxNumCodeSymbols() const { return isDC() ? xJPEG_Constants::c_MaxNumCodeSymbolsDC : isAC() ? xJPEG_Constants::c_MaxNumCodeSymbolsAC : NOT_VALID; }
+    static int32 getMaxNumCodeSymbols(tClass Class) { return Class == tClass::DC ? xJPEG_Constants::c_MaxNumCodeSymbolsDC : Class == tClass::AC ? xJPEG_Constants::c_MaxNumCodeSymbolsAC : NOT_VALID; }
+
+    static std::vector<xHuffTable> createDefaultHuffTables();
   };
+
+  using tHuffTablesV = std::vector<xHuffTable>;
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -271,8 +259,8 @@ public:
   {
   protected:
     int32  m_NumComponents;
-    eCmp   m_CmpId      [xJPEG_Constants::c_MaxComponents];
-    int32  m_HuffTableId[xJPEG_Constants::c_MaxComponents];
+    eCmp   m_CmpId    [xJPEG_Constants::c_MaxComponents];
+    int32  m_EntropyId[xJPEG_Constants::c_MaxComponents];
     int32  m_SpectralSelectionStart;
     int32  m_SpectralSelectionEnd;
     int32  m_SuccessiveApproximation;
@@ -280,7 +268,8 @@ public:
   public:
     int32  Absorb(xByteBuffer* Input );
     int32  Emit  (xByteBuffer* Output)  const;
-    void   Init     (int32 NumComponents, int32 LumaHuffTabIdx, int32 ChromaHuffTabIdx);
+    void   InitBaseline(int32 NumComponents, int32 EntropyIdL, int32 EntropyIdC);
+    void   InitExtended(int32 NumComponents, int32V4 EntropyId);
     bool   Validate () const;
     int32  getLength() const { return 6 + m_NumComponents * 2; }
 
@@ -289,9 +278,9 @@ public:
     int32  getNumComponents(                   ) const { return m_NumComponents; }
     void   setCmpId        (eCmp CmpId, eCmp  Cmp)       { m_CmpId[(int32)Cmp] = CmpId; }
     eCmp   getCmpId        (            eCmp  Cmp) const { return m_CmpId[(int32)Cmp]; }
-    void   setHuffTableId  (int32 HuffTableIdDC, int32 HuffTableIdAC, eCmp Cmp)       { m_HuffTableId[(int32)Cmp] = (((HuffTableIdDC & 0x03) << 4) + (HuffTableIdAC & 0x03)); }
-    int32  getHuffTableIdDC(                                          eCmp Cmp) const { return ((m_HuffTableId[(int32)Cmp] >> 4) & 0x03); }
-    int32  getHuffTableIdAC(                                          eCmp Cmp) const { return ((m_HuffTableId[(int32)Cmp]     ) & 0x03); }
+    void   setEntropyId    (int32 EntropyIdDC, int32 EntropyIdAC, eCmp Cmp)       { m_EntropyId[(int32)Cmp] = (((EntropyIdDC & 0x03) << 4) + (EntropyIdAC & 0x03)); }
+    int32  getEntropyIdDC  (                                      eCmp Cmp) const { return ((m_EntropyId[(int32)Cmp] >> 4) & 0x03); }
+    int32  getEntropyIdAC  (                                      eCmp Cmp) const { return ((m_EntropyId[(int32)Cmp]     ) & 0x03); }
   };
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -300,8 +289,8 @@ public:
   static bool    ReadSOI         (xByteBuffer* Input ) { return (xReadMarker(Input )==eMarker::SOI); }
   static void    WriteSOI        (xByteBuffer* Output) { xWriteMarker(Output, eMarker::SOI); }
 
-  static bool    ReadAPP0        (xByteBuffer* Input , xAPP0& APP0);
-  static void    WriteAPP0       (xByteBuffer* Output, xAPP0& APP0);
+  static bool    ReadAPP0        (xByteBuffer* Input ,       xAPP0& APP0);
+  static void    WriteAPP0       (xByteBuffer* Output, const xAPP0& APP0);
   static void    WriteDefaultAPP0(xByteBuffer* Output);
 
   static bool    ReadDQT         (xByteBuffer* Input ,       std::vector<xQuantTable>& QuantTables);
@@ -310,17 +299,17 @@ public:
   static bool    ReadDRI         (xByteBuffer* Input , int32& RestartInterval);
   static void    WriteDRI        (xByteBuffer* Output, int32  RestartInterval);
 
-  static bool    ReadSOF0        (xByteBuffer* Input , xSOF0& SOF0);
-  static void    WriteSOF0       (xByteBuffer* Output, xSOF0& SOF0);
-  static void    WriteSOF0       (xByteBuffer* Output, int32 Height, int32 Width, int32 BitDepth, eCrF ChromaFormat, int32 NumQuantTables);
+  static bool    ReadSOF         (xByteBuffer* Input ,       xSOF& SOF);
+  static void    WriteSOF        (xByteBuffer* Output, const xSOF& SOF);
+  static void    WriteSOF        (xByteBuffer* Output, int32 Type, int32 Height, int32 Width, int32 BitDepth, eCrF ChromaFormat, int32 NumQuantTables);
   
-  static bool    ReadDHT         (xByteBuffer* Input , std::vector<xHuffTable>& HuffTables);
-  static void    WriteDHT        (xByteBuffer* Output, std::vector<xHuffTable>& HuffTables);
+  static bool    ReadDHT         (xByteBuffer* Input ,       std::vector<xHuffTable>& HuffTables);
+  static void    WriteDHT        (xByteBuffer* Output, const std::vector<xHuffTable>& HuffTables);
   static void    WriteDefaultDHT (xByteBuffer* Output);
 
-  static bool    ReadSOS         (xByteBuffer* Input , xSOS& SOS);
-  static bool    SkipSOS         (xByteBuffer* Input            );
-  static void    WriteSOS        (xByteBuffer* Output, xSOS& SOS);
+  static bool    ReadSOS         (xByteBuffer* Input ,       xSOS& SOS);
+  static bool    SkipSOS         (xByteBuffer* Input                  );
+  static void    WriteSOS        (xByteBuffer* Output, const xSOS& SOS);
   static void    WriteSOS        (xByteBuffer* Output, int32 NumComponents, int32 LumaHuffTabIdx, int32 ChromaHuffTabIdx);
     
   static bool    ReadData        (byte* Payload, int32 Size, xByteBuffer* Input ) { return xReadMemmory (Payload, Size, Input ); }
@@ -334,13 +323,13 @@ public:
   static void    WriteEOI        (xByteBuffer* Output) { xWriteMarker(Output, eMarker::EOI); }
 
 public:
-  static eMarker IdentifySegment (xByteBuffer* Input ) { return xPeekMarker(Input ); }
-  static int32   FindSegment     (xByteBuffer* Input , eMarker Marker);
-  static int64   SeekNextSegment (std::ifstream* Input, eMarker Marker);
+  static eMarker IdentifyMarker  (xByteBuffer* Input ) { return xPeekMarker(Input ); }
+  static int32   FindMarker      (xByteBuffer* Input , eMarker Marker);
+  static tPosV   SeekAllMarkers  (xStream* File, eMarker Marker, int32 SeekBufferSize = c_SeekBufferSize);
 
 public: 
-  static void    AddStuffing     (xByteBuffer* Output, xByteBuffer* Input);
-  static void    RemoveStuffing  (xByteBuffer* Output, xByteBuffer* Input);
+  static void    AddStuffing     (xByteBuffer* Output, xByteBuffer* Input) { xMarkerUtils::AddStuffing   (Output, Input); }
+  static void    RemoveStuffing  (xByteBuffer* Output, xByteBuffer* Input) { xMarkerUtils::RemoveStuffing(Output, Input); }
       
 protected:
   static uint8   xPeek8          (xByteBuffer* Input ) { return Input ->peekU8    ();  }
@@ -368,8 +357,8 @@ protected:
   static void    xWriteVector    (xByteBuffer* Output, const tByteV& SrcVec) { Output->appendBytes(SrcVec.data(), (int32)SrcVec.size()); }
   static void    xWriteMarker    (xByteBuffer* Output, eMarker Marker) { xWrite8(Output, 0xFF); xWrite8(Output, (uint8)Marker); }
 
-  static bool xFitsU8 (int32 V) { return V >= (int32)uint8_min  && V <= (int32)uint8_max ; }
-  static bool xFitsU16(int32 V) { return V >= (int32)uint16_min && V <= (int32)uint16_max; }
+  static bool    xFitsU8 (int32 V) { return V >= (int32)std::numeric_limits<uint8 >::min() && V <= (int32)std::numeric_limits<uint8 >::max(); }
+  static bool    xFitsU16(int32 V) { return V >= (int32)std::numeric_limits<uint16>::min() && V <= (int32)std::numeric_limits<uint16>::max(); }
 };
 
 //=============================================================================================================================================================================

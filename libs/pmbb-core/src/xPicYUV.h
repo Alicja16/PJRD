@@ -43,7 +43,7 @@ public:
   void   fill   (uint16 Value      , eCmp CmpId);
   bool   check  (const std::string& Name       ) const;
   void   conceal(                              );
-  void   extend (                              );
+  void   extend (eMrgExt MarginExtendMode = eMrgExt::Nearest);
 
 public:
   //inter-buffer compatibility functions
