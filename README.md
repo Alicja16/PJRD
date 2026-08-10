@@ -1,3 +1,4 @@
+RLC
 # PJRD
 
 Parallel JPEG encoder with Rate Distortion Optimized Quantization (RDOQ) (and other optimizations)
