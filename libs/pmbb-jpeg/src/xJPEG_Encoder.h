@@ -7,6 +7,7 @@
 #include "xJPEG_CodecCommon.h"
 #include "xJFIF.h"
 #include "xPicYUV.h"
+#include "xPic.h"
 #include "xJPEG_Quant.h"
 #include "xJPEG_EntropyHuffman.h"
 #include <array>
@@ -92,12 +93,13 @@ public:
   void initQuant      (int32 Quality, eQTLa QuantTabLayout);
   void initEntropy    (int32 RestartInterval);
   
-  void encode(const xPicYUV* InputPicture, xByteBuffer* OutputBuffer);
+  void encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer, bool useRGB);
 
   std::string formatAndResetStats(const std::string Prefix, flt64 TicksPerMiliSec);
 
 protected:
   void xEncodePicture(xByteBuffer* Buffer, const xPicYUV* Picture);
+  void xEncodePictureWithRGB(xByteBuffer* OutputBuffer, const xPicYUV* Picture, const xPicP* PictureRGB);
 
   //Fwd/Inv transform + Quant/InvScale
   void xFwdTransformPic(int16* CoeffsTransV[], const xPicYUV* Picture);
@@ -122,6 +124,8 @@ protected:
   int64V4 xCalcDistPic    (const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicYUV* PictureRef);
   void    xEstimateLambda (const xPicYUV* Picture);
 
+
+
   //RDOQ
   void   xOptQuantHuffPic(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture);
   void   xOptQuantHuffSlc(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, int32 MCU_IdxFirst, int32 MCU_IdxLast);
@@ -132,6 +136,22 @@ protected:
   uint64 xCalkApprxDistBLK(const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const xQuantizer& Quantizer);
   void   xOptQuantPic     (int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture) { xOptQuantHuffPic(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture); }
   
+
+  // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  //RDOQ-RGB
+  void   xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB);
+  void   xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB, int32 MCU_IdxFirst, int32 MCU_IdxLast);
+  void   xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx);
+  void   xOptQuantHuffBLKRGB(int16* OptCoeffQuantScan, const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrg, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], eCmp CmpId, int32 LastDC);
+  uint64 xCalcDistBLKRGB(const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrgScan, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], const xQuantizer& Quantizer);
+  uint64 xCalkExactDistBLKRGB(const int16* CoeffsQuantScan, const uint16* SamplesOrg, const xQuantizer& Quantizer, const xPicYUV* Picture, const xPicP* PictureRGB);
+  uint64 xCalkApprxDistBLKRGB(const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const xQuantizer& Quantizer);
+  void   xOptQuantPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB) { xOptQuantHuffPicRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture, PictureRGB); }
+  // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
   //Huffman tables optimization
   void   xOptHuffPic(const int16* CoeffsQuantScanV[]);
   void   xCntHuffPic(const int16* CoeffsQuantScanV[]);

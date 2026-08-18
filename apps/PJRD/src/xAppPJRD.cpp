@@ -564,7 +564,7 @@ eAppRes xAppJPEG::processAllFrames()
     switch(m_Implementation)
     {
       case eImpl::Simple  : m_EncoderSimple.encode(m_PicOrg4XX, &m_OutBuffer); break;
-      case eImpl::Advanced: m_EncoderRDOQ  .encode(m_PicOrg4XX, &m_OutBuffer); break;
+      case eImpl::Advanced: m_EncoderRDOQ  .encode(m_PicOrg4XX, m_PicOrgRGB, &m_OutBuffer, false); break;
 #if X_PMBB_HAS_JPEG_TURBO
       case eImpl::Turbo   : m_EncoderTurbo .encode(m_PicOrg4XX, &m_OutBuffer); break;
 #endif //X_PMBB_HAS_JPEG_TURBO

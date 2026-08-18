@@ -167,9 +167,11 @@ void xAdvancedEncoder::initEntropy(int32 RestartInterval)
     m_EntropyHuffCnts.resize(NumHuffCounters);
   }
 }
-void xAdvancedEncoder::encode(const xPicYUV* InputPicture, xByteBuffer* OutputBuffer)
+void xAdvancedEncoder::encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer, bool useRGB=false)
 {
-  xEncodePicture(OutputBuffer, InputPicture);
+    if (useRGB){ xEncodePicture(OutputBuffer, InputPicture); }
+    else{ xEncodePictureWithRGB(OutputBuffer, InputPicture, InputPictureRGB); }
+  
 }
 std::string xAdvancedEncoder::formatAndResetStats(const std::string Prefix, flt64 TicksPerMicroSec)
 {
@@ -280,6 +282,341 @@ void xAdvancedEncoder::xEncodePicture(xByteBuffer* OutputBuffer, const xPicYUV* 
     m_Ticks__WriteOut += TP7 - TP6;
   }
 }
+
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// RGB REFERENCES - TEST
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+void xAdvancedEncoder::xEncodePictureWithRGB(xByteBuffer* OutputBuffer, const xPicYUV* Picture, const xPicP* PictureRGB){
+
+//Picture
+//│
+//└── const xPicYUV*
+//      └── Y/Cb/Cr 4:4:4
+//
+// 
+//PictureRGB
+//│
+//└── const xPicP *
+//      └── R/G/B
+
+    const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2], m_CmpCoeffsTransOrg[3] };
+    const int16* ConstCmpCoeffsQuantScan[] = { m_CmpCoeffsQuantScan[0], m_CmpCoeffsQuantScan[1], m_CmpCoeffsQuantScan[2], m_CmpCoeffsQuantScan[3] };
+    const int16* ConstCmpCoeffsQuantScanOpt[] = { m_CmpCoeffsQuantScanOpt[0], m_CmpCoeffsQuantScanOpt[1], m_CmpCoeffsQuantScanOpt[2], m_CmpCoeffsQuantScanOpt[3] };
+
+    if (m_OptEntropyTables)
+    {
+        m_HTs = xJFIF::xHuffTable::createDefaultHuffTables(); //make sure that new pics starts with m_HTs set to DefaultHuffTables
+    }
+
+    uint64 TP0 = m_GatherTimeStats ? xTSC() : 0;
+
+    xFwdTransformPic(m_CmpCoeffsTransOrg, Picture);
+
+    uint64 TP1 = m_GatherTimeStats ? xTSC() : 0;
+
+    xFwdQuantScanPic(m_CmpCoeffsQuantScan, ConstCmpCoeffsTransOrg, m_QuantMain);
+
+    uint64 TP2 = m_GatherTimeStats ? xTSC() : 0;
+
+    if (m_OptQuantCoeffs) { xEstimateLambda(Picture); }
+
+    uint64 TP3 = m_GatherTimeStats ? xTSC() : 0;
+
+    for (int32 n = 0; n < m_NumOptPassesPic; n++)
+    {
+        uint64 TPo0 = m_GatherTimeStats ? xTSC() : 0;
+
+        if (m_OptQuantCoeffs) { xOptQuantPicRGB(m_CmpCoeffsQuantScanOpt, ConstCmpCoeffsQuantScan, ConstCmpCoeffsTransOrg, Picture, PictureRGB); }
+
+        uint64 TPo1 = m_GatherTimeStats ? xTSC() : 0;
+
+        if (m_OptEntropyTables) { xOptEntropyPic(m_OptQuantCoeffs ? ConstCmpCoeffsQuantScanOpt : ConstCmpCoeffsQuantScan); }
+
+        if (m_GatherTimeStats) { m_Ticks__OptQuant += TPo1 - TPo0; m_TicksOptEntropy += xTSC() - TPo1; }
+    }
+
+    uint64 TP4 = m_GatherTimeStats ? xTSC() : 0;
+
+    xEncodePic(m_OptQuantCoeffs ? ConstCmpCoeffsQuantScanOpt : ConstCmpCoeffsQuantScan);
+
+    uint64 TP5 = m_GatherTimeStats ? xTSC() : 0;
+
+    xJFIF::WriteSOI(OutputBuffer);
+    if (m_EmitAPP0) { xJFIF::WriteAPP0(OutputBuffer, m_APP0); }
+    if (m_EmitQuantTabs) { xJFIF::WriteDQT(OutputBuffer, m_QTs); }
+    if (m_RestartInterval) { xJFIF::WriteDRI(OutputBuffer, m_RestartInterval); }
+    xJFIF::WriteSOF(OutputBuffer, m_SOF);
+    if (m_EmitEntropyTabs) { xJFIF::WriteDHT(OutputBuffer, m_HTs); }
+
+    uint64 TP6 = m_GatherTimeStats ? xTSC() : 0;
+
+    xJFIF::WriteSOS(OutputBuffer, m_SOS);
+    xWritePic(OutputBuffer);
+    xJFIF::WriteEOI(OutputBuffer);
+
+    uint64 TP7 = m_GatherTimeStats ? xTSC() : 0;
+
+    m_TotalPictureIters += 1;
+    if (m_GatherTimeStats)
+    {
+        m_Ticks___Picture += TP6 - TP0;
+        m_Ticks_Transform += TP1 - TP0;
+        m_Ticks_QuantScan += TP2 - TP1;
+        m_Ticks_LambdaEst += TP3 - TP2;
+        m_TicksEntropyEnc += TP5 - TP4;
+        m_Ticks____Tables += TP6 - TP5;
+        m_Ticks__WriteOut += TP7 - TP6;
+    }
+}
+
+
+
+// -----------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+void xAdvancedEncoder::xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB){
+    if (m_RestartInterval == 0)
+    {
+        for (int32 MCU_RowIdx = 0; MCU_RowIdx < m_NumMCUsInHeight; MCU_RowIdx++) //loop over MCUs rows
+        {
+            const int32 MCU_IdxFirst = MCU_RowIdx * m_NumMCUsInWidth;
+            const int32 MCU_IdxLast = MCU_IdxFirst + m_NumMCUsInWidth - 1;
+            m_ThPI.storeTask([this, &OptCoeffsQuantScanV, &CoeffsQuantScanV, &CoeffsTransOrgV, &Picture, &PictureRGB, MCU_IdxFirst, MCU_IdxLast](int32 /*ThIdx*/)
+                {
+                    xOptQuantHuffSlcRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture, PictureRGB, MCU_IdxFirst, MCU_IdxLast);
+                });
+        }
+    }
+    else //divide picture into independent slices
+    {
+        for (int32 SliceIdx = 0; SliceIdx < m_NumOfSlices; SliceIdx++)
+        {
+            const int32 MCU_IdxFirst = SliceIdx * m_RestartInterval;
+            const int32 MCU_IdxLast = xMin(m_NumMCUsInArea, MCU_IdxFirst + m_RestartInterval) - 1;
+            m_ThPI.storeTask([this, &OptCoeffsQuantScanV, &CoeffsQuantScanV, &CoeffsTransOrgV, &Picture, &PictureRGB, MCU_IdxFirst, MCU_IdxLast](int32 /*ThIdx*/)
+                {
+                    xOptQuantHuffSlcRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture, PictureRGB, MCU_IdxFirst, MCU_IdxLast);
+                });
+        }
+    }
+    m_ThPI.executeStoredTasks();
+}
+
+
+void xAdvancedEncoder::xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB, int32 MCU_IdxFirst, int32 MCU_IdxLast){
+    // RGB
+    const uint16* RGBPtrV[] = { PictureRGB->getAddr(eCmp::LM), PictureRGB->getAddr(eCmp::CB), PictureRGB->getAddr(eCmp::CR), nullptr };
+    const int32   StrideRGB = PictureRGB->getStride(); // last one
+
+
+    //loop over MCUs
+    for (int32 MCU_Idx = MCU_IdxFirst; MCU_Idx <= MCU_IdxLast; MCU_Idx++)
+    {
+        xOptQuantHuffMCURGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, RGBPtrV, StrideRGB, MCU_Idx);
+    }
+}
+
+
+void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx){
+    //calculate MCU position
+    int32 MCU_PosV = MCU_Idx / m_NumMCUsInWidth;
+    int32 MCU_PosH = MCU_Idx % m_NumMCUsInWidth;
+
+
+    // calculate blocks
+    const int32 BlockPosV = MCU_PosV * c_BS;
+    const int32 BlockPosH = MCU_PosH * c_BS;
+    const int32 BlockResV = m_CmpHeight[0] - BlockPosV;
+    const int32 BlockResH = m_CmpWidth[0] - BlockPosH;
+
+
+    //org samples buffer
+    PMBB_ALIGN_JPEG_BLK uint16 SamplesOrgRGB[3][c_BA];
+
+
+    for (int32 RGBIdx = 0; RGBIdx < m_NumOfComponents; RGBIdx++){
+        const uint16* RGBPtr = RGBPtrV[RGBIdx];
+        const uint16* BlockPtr = RGBPtr + BlockPosV * StrideRGB + BlockPosH;
+
+
+        if (BlockResV >= 8 && BlockResH >= 8) {loadEntireBlock(SamplesOrgRGB[RGBIdx], BlockPtr, StrideRGB);}
+        else if (BlockResV > 0 && BlockResH > 0) {loadExtendBlock(SamplesOrgRGB[RGBIdx], BlockPtr, StrideRGB, xMin(BlockResH, c_BS), xMin(BlockResV, c_BS));}
+        else { zeroEntireBlock(SamplesOrgRGB[RGBIdx]); }
+    }
+
+
+    int32 BlockIdx = MCU_Idx;
+    const int32 CoeffOffset = BlockIdx << c_L2BA;
+    const bool  FirstInSlc = BlockIdx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
+
+    const int16* CoeffsQuantScanBlockV[3] =
+    {
+        CoeffsQuantScanV[0] + CoeffOffset,
+        CoeffsQuantScanV[1] + CoeffOffset,
+        CoeffsQuantScanV[2] + CoeffOffset
+    };
+   
+
+    const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
+    xOptQuantHuffBLKRGB(OptCoeffsQuantScanV[0] + CoeffOffset, CoeffsQuantScanV[0] + CoeffOffset, CoeffsTransOrgV[0] + CoeffOffset, SamplesOrgRGB, CoeffsQuantScanBlockV, eCmp(0), LastDC_Y);
+
+    CoeffsQuantScanBlockV[0] = OptCoeffsQuantScanV[0] + CoeffOffset;
+
+
+    const int32 LastDC_Cb = FirstInSlc ? 0 : CoeffsQuantScanV[1][CoeffOffset - c_BA];
+    xOptQuantHuffBLKRGB(OptCoeffsQuantScanV[1] + CoeffOffset, CoeffsQuantScanV[1] + CoeffOffset, CoeffsTransOrgV[1] + CoeffOffset, SamplesOrgRGB, CoeffsQuantScanBlockV, eCmp(1), LastDC_Cb);
+
+    CoeffsQuantScanBlockV[1] = OptCoeffsQuantScanV[1] + CoeffOffset;
+
+
+    const int32 LastDC_Cr = FirstInSlc ? 0 : CoeffsQuantScanV[2][CoeffOffset - c_BA];
+    xOptQuantHuffBLKRGB(OptCoeffsQuantScanV[2] + CoeffOffset, CoeffsQuantScanV[2] + CoeffOffset, CoeffsTransOrgV[2] + CoeffOffset, SamplesOrgRGB, CoeffsQuantScanBlockV, eCmp(2), LastDC_Cr);
+
+    CoeffsQuantScanBlockV[2] = OptCoeffsQuantScanV[2] + CoeffOffset;
+
+
+}
+
+
+void xAdvancedEncoder::xOptQuantHuffBLKRGB(int16* OptCoeffQuantScan, const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrg, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], eCmp CmpId, int32 LastDC) {
+    const int32 QuantTabId = m_SOF.getQuantTableId(CmpId);
+    const int32 EntropyIdDC = m_SOS.getEntropyIdDC(CmpId);
+    const int32 EntropyIdAC = m_SOS.getEntropyIdAC(CmpId);
+    const flt64 Lambda = m_Lambda[(int32)CmpId];
+
+    const xQuantizer& Quantizer = m_QuantMain.getQuantizer(QuantTabId);
+
+    int32 LastNonZero = xEntropyUtils::findLastNonZero(BeingTestedCoeffsQuantScan);
+    if (LastNonZero == 0) { memcpy(OptCoeffQuantScan, BeingTestedCoeffsQuantScan, c_BA * sizeof(int16)); return; } //only DC - nothing to do here
+
+    const int32 OrgBitsDC = m_EntropyHuffEst.EstimateBlockDC(BeingTestedCoeffsQuantScan, LastDC, EntropyIdDC);
+    const int32 OrgBitsAC = m_EntropyHuffEst.EstimateBlockAC(BeingTestedCoeffsQuantScan, EntropyIdAC);
+
+    int32  BestBits = OrgBitsDC + OrgBitsAC;
+    uint64 BestDist = xCalcDistBLKRGB(BeingTestedCoeffsQuantScan, CoeffsTransOrg, SamplesOrgRGB, Quantizer);
+    flt64  BestCost = (flt64)BestDist + Lambda * (flt64)BestBits;
+
+    PMBB_ALIGN_JPEG_BLK int16 TmpCoeffsQuantScan[c_BA];
+    memcpy(TmpCoeffsQuantScan, CoeffsQuantScan, c_BA * sizeof(int16));
+
+    for (int32 PassIdx = 0; PassIdx < m_NumOptPassesBlock; PassIdx++)
+    {
+        for (int32 i = LastNonZero; i >= 1; i--)
+        {
+            const int16 OrgCoeff = TmpCoeffsQuantScan[i];
+            if (!m_ProcessZeroCoeffs && OrgCoeff == 0) { continue; }
+
+            int16 BestCoeff = TmpCoeffsQuantScan[i];
+            //try zero
+            if (OrgCoeff != 0)
+            {
+                TmpCoeffsQuantScan[i] = 0;
+                int32  CurrBits = OrgBitsDC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, EntropyIdAC);
+                uint64 CurrDist = xCalcDistBLKRGB(TmpCoeffsQuantScan, CoeffsTransOrg, SamplesOrg, Quantizer, Picture, PictureRGB);
+                flt64  CurrCost = (double)CurrDist + Lambda * (flt64)CurrBits;
+                if (CurrCost < BestCost)
+                {
+                    BestBits = CurrBits;
+                    BestCost = CurrCost;
+                    BestCoeff = 0;
+                }
+            }
+
+            //try +1
+            if (OrgCoeff != -1)
+            {
+                TmpCoeffsQuantScan[i] = OrgCoeff + 1;
+                int32  CurrBits = OrgBitsDC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, EntropyIdAC);
+                uint64 CurrDist = xCalcDistBLKRGB(TmpCoeffsQuantScan, CoeffsTransOrg, SamplesOrg, Quantizer, Picture, PictureRGB);
+                flt64  CurrCost = (flt64)CurrDist + Lambda * (flt64)CurrBits;
+                if (CurrCost < BestCost)
+                {
+                    BestBits = CurrBits;
+                    BestCost = CurrCost;
+                    BestCoeff = OrgCoeff + 1;
+                }
+            }
+
+            //try -1  
+            if (OrgCoeff != 1)
+            {
+                TmpCoeffsQuantScan[i] = OrgCoeff - 1;
+                int32  CurrBits = OrgBitsDC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, EntropyIdAC);
+                uint64 CurrDist = xCalcDistBLKRGB(TmpCoeffsQuantScan, CoeffsTransOrg, SamplesOrg, Quantizer, Picture, PictureRGB);
+                flt64  CurrCost = (flt64)CurrDist + Lambda * (flt64)CurrBits;
+                if (CurrCost < BestCost)
+                {
+                    BestBits = CurrBits;
+                    BestCost = CurrCost;
+                    BestCoeff = OrgCoeff - 1;
+                }
+            }
+
+            TmpCoeffsQuantScan[i] = BestCoeff;
+        }
+    }
+
+    //int32 TestBits = m_EntropyHuffEst.EstimateBlock(TmpCoeffsScan, CmpId, HuffTabIdDC, HuffTabIdAC);
+    memcpy(OptCoeffQuantScan, TmpCoeffsQuantScan, c_BA * sizeof(int16));
+}
+
+
+uint64 xAdvancedEncoder::xCalcDistBLKRGB(const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const uint16* SamplesOrg, const xQuantizer& Quantizer, const xPicYUV* Picture, const xPicP* PictureRGB){
+    if (m_BlkOptDistCalcMode == eCalkMd::Exact) { return xCalkExactDistBLKRGB(CoeffsQuantScan, SamplesOrg, Quantizer, Picture, PictureRGB); }
+    else if (m_BlkOptDistCalcMode == eCalkMd::Approx) { return xCalkApprxDistBLK(CoeffsQuantScan, CoeffsTransOrgScan, Quantizer); }
+    else { assert(0); return 0; }
+}
+
+
+uint64 xAdvancedEncoder::xCalkExactDistBLKRGB(const int16* CoeffsQuantScan, const uint16* SamplesOrg, const xQuantizer& Quantizer, const xPicYUV* Picture, const xPicP* PictureRGB){
+    PMBB_ALIGN_JPEG_BLK int16  TmpQuantCoeffs[c_BA];
+    PMBB_ALIGN_JPEG_BLK int16  TmpTransCoeffs[c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 TmpSamples[c_BA];
+
+    xScan::InvScan(TmpQuantCoeffs, CoeffsQuantScan);
+    Quantizer.InvScale(TmpTransCoeffs, TmpQuantCoeffs);
+    TmpTransCoeffs[0] += xTransformConstants::c_InvDcCorr; //DC correction - JPEG requires 128 to be subtracted from every input sample - could be done be DC -= 
+    xTransform::InvTransformDCT_8x8(TmpSamples, TmpTransCoeffs);
+    uint64 SSD = xDistortion::CalcSSD(SamplesOrg, TmpSamples, c_BS, c_BS, c_BS, c_BS, 8);
+    return SSD;
+}
+
+
+uint64 xAdvancedEncoder::xCalkApprxDistBLK(const int16* CoeffsQuantScan, const int16* CoeffsTransOrg, const xQuantizer& Quantizer){
+    PMBB_ALIGN_JPEG_BLK int16 RecQuantCoeffs[c_BA];
+    PMBB_ALIGN_JPEG_BLK int16 RecTransCoeffs[c_BA];
+
+    xScan::InvScan(RecQuantCoeffs, CoeffsQuantScan);
+    Quantizer.InvScale(RecTransCoeffs, RecQuantCoeffs);
+    uint64 SSD = xOptUtils::approxSSDfromCoeffs(RecTransCoeffs, CoeffsTransOrg);
+    return SSD;
+}
+
+
+
+
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// RGB REFERENCES - TEST
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Fwd/Inv transform + Quant/InvScale

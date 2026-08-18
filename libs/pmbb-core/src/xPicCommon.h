@@ -26,7 +26,7 @@ protected:
   int32   m_Width            = NOT_VALID;
   int32   m_Height           = NOT_VALID;
   int32   m_Margin           = NOT_VALID;
-  int32   m_Stride           = NOT_VALID;
+  int32   m_Stride           = NOT_VALID; // width + 2⋅margin
   int32   m_BitDepth         = NOT_VALID;
   int32   m_NumCmps          = NOT_VALID;
 
