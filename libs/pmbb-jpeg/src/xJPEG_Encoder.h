@@ -138,20 +138,34 @@ protected:
   
 
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ private:
+     struct xCmpCandtParams
+     {
+         const int16* CoeffsQuantScanBlock;
+         const xQuantizer* Quantizer;
+         int32 EntropyIdDC;
+         int32 EntropyIdAC;
+         flt64 Lambda;
+         int32 LastDC;
+     };
+  
   //RDOQ-RGB
   void   xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB);
   void   xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void   xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx);
-  void   xOptQuantHuffBLKRGB(int16* OptCoeffQuantScan, const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrg, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], eCmp CmpId, int32 LastDC);
-  uint64 xCalcDistBLKRGB(const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrgScan, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], const xQuantizer& Quantizer);
-  uint64 xCalkExactDistBLKRGB(const int16* CoeffsQuantScan, const uint16* SamplesOrg, const xQuantizer& Quantizer, const xPicYUV* Picture, const xPicP* PictureRGB);
-  uint64 xCalkApprxDistBLKRGB(const int16* CoeffsQuantScan, const int16* CoeffsTransOrgScan, const xQuantizer& Quantizer);
+  void   xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, const uint16* RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][c_BA], eCmp CandtCmpId, const xCmpCandtParams& Params, const int32 RateRecSamples);
+  //void   xOptQuantHuffBLKRGB(int16* OptCoeffQuantScan, const int16* BeingTestedCoeffsQuantScan, const int16* CoeffsTransOrg, const uint16 SamplesOrgRGB[3][c_BA], const int16* CoeffsQuantScanBlockV[], eCmp CmpId, int32 LastDC);
+  uint64 xCalcDistBLKRGB(const int16* CoeffsQuantScanBlockV[], const uint16 SamplesOrgRGB[3][c_BA], eCmp CmpId, int32 LastDC, const xQuantizer& Quantizer);
+  uint64 xCalkExactDistBLKRGB(const int16* CoeffsQuantScanBlockV[], const uint16 SamplesOrgRGB[3][c_BA], const xQuantizer& Quantizer);
+  //uint64 xCalkApprxDistBLKRGB(const int16* CoeffsQuantScanBlockV[], const int16* CoeffsTransOrgScan, const xQuantizer& Quantizer);
   void   xOptQuantPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicYUV* Picture, const xPicP* PictureRGB) { xOptQuantHuffPicRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, Picture, PictureRGB); }
-  // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  void   xInvProcess(uint16* TmpSamples, const int16* CoeffsQuantScanBlockV, const xQuantizer& Quantizer);
+  // -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
-
+protected:
   //Huffman tables optimization
   void   xOptHuffPic(const int16* CoeffsQuantScanV[]);
   void   xCntHuffPic(const int16* CoeffsQuantScanV[]);
