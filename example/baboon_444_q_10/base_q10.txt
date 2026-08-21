@@ -1,0 +1,12 @@
+SUMMARY:
+TotalFrames         = 1
+Bitrate             = 101.758 kib/s
+PSNR-Y              =  22.991740 dB
+PSNR-Cb             =  28.571906 dB
+PSNR-Cr             =  29.317210 dB
+PSNR-R              =  22.464191 dB
+PSNR-G              =  21.855168 dB
+PSNR-B              =  20.704406 dB
+AverageFrameSize    = 13025.0000 Bytes
+AverageBitsPerPixel = 0.3975 Bits/Pixel
+CompressionRatio    = 0.0166
