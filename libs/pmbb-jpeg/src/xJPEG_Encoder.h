@@ -93,7 +93,7 @@ public:
   void initQuant      (int32 Quality, eQTLa QuantTabLayout);
   void initEntropy    (int32 RestartInterval);
   
-  void encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer, bool useRGB);
+  void encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer);
 
   std::string formatAndResetStats(const std::string Prefix, flt64 TicksPerMiliSec);
 

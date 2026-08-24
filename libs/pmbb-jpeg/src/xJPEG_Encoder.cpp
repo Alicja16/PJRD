@@ -168,9 +168,9 @@ void xAdvancedEncoder::initEntropy(int32 RestartInterval)
     m_EntropyHuffCnts.resize(NumHuffCounters);
   }
 }
-void xAdvancedEncoder::encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer, bool useRGB)
+void xAdvancedEncoder::encode(const xPicYUV* InputPicture, const xPicP* InputPictureRGB,  xByteBuffer* OutputBuffer)
 {
-    useRGB = false;
+    bool useRGB = true;
     if (useRGB){ xEncodePictureWithRGB(OutputBuffer, InputPicture, InputPictureRGB); } //true
     else{ xEncodePicture(OutputBuffer, InputPicture); } // false
   
@@ -381,10 +381,6 @@ void xAdvancedEncoder::xEncodePictureWithRGB(xByteBuffer* OutputBuffer, const xP
 
 // -----------------------------------------------------------------------------------------------------------------
 
-
-
-
-
 void xAdvancedEncoder::xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB){
     if (m_RestartInterval == 0)
     {
@@ -562,7 +558,7 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
 
 
     // # 2. Cb optimization
-    xInvProcess(TmpSamples_Y, OptCoeffsQuantScanBlockV[0], Quantizer_Y);
+    xInvProcess(TmpSamples_Y, OptCoeffsQuantScanBlockV[(int32)eCmp::LM], Quantizer_Y);
     // xInvProcess(TmpSamples_Cr, CoeffsQuantScanBlockV[2], Quantizer_Cr);  - already have that
 
     RecSamplesBlockV[0] = { TmpSamples_Y, eCmp::LM };
@@ -574,7 +570,7 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     //const int32 OrgBitsDC_Cr = m_EntropyHuffEst.EstimateBlockDC(CoeffsQuantScanBlockV[2], LastDC_Cr, EntropyIdDC_Cr); - already have that
     //const int32 OrgBitsAC_Cr = m_EntropyHuffEst.EstimateBlockAC(CoeffsQuantScanBlockV[2], EntropyIdAC_Cr); - already have that
 
-    const int32  Bits_Y_Cr = OptBitsDC_Y + OptBitsAC_Y + OrgBitsDC_Cr + OrgBitsDC_Cr;
+    const int32  Bits_Y_Cr = OptBitsDC_Y + OptBitsAC_Y + OrgBitsDC_Cr + OrgBitsAC_Cr;
 
     xOptQuantHuffTestCandtsRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::CB], RecSamplesBlockV, SamplesOrgRGB, Params_Cb, Bits_Y_Cr);
 
@@ -583,7 +579,7 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
 
     // # 3. Cr optimization
     // xInvProcess(TmpSamples_Y, OptCoeffsQuantScanBlockV[0], Quantizer_Y); - already have that
-    xInvProcess(TmpSamples_Cb, OptCoeffsQuantScanBlockV[1], Quantizer_Cb);
+    xInvProcess(TmpSamples_Cb, OptCoeffsQuantScanBlockV[(int32)eCmp::CB], Quantizer_Cb);
 
     RecSamplesBlockV[0] = { TmpSamples_Y, eCmp::LM };
     RecSamplesBlockV[1] = { TmpSamples_Cb, eCmp::CB };
@@ -624,13 +620,13 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
 
     xInvProcess(TmpSamples, Params.CoeffsQuantScanBlockV, *Params.Quantizer);
 
-    std::pair<const uint16*, eCmp> SamplesYCbCr[3] = {
+    std::pair<const uint16*, eCmp> SamplesRecYCbCr[3] = {
         RecSamplesBlockV[0],
         RecSamplesBlockV[1],
         { TmpSamples, Params.Cmp }
     };
 
-    uint64 BestDist = xCalcDistRGB(SamplesYCbCr, SamplesOrgRGB);
+    uint64 BestDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
     flt64  BestCost = (flt64)BestDist + Params.Lambda * (flt64)BestBits;
 
 
@@ -652,11 +648,6 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
                 int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
                 xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
-                std::pair<const uint16*, eCmp> SamplesRecYCbCr[3] = {
-                    RecSamplesBlockV[0],
-                    RecSamplesBlockV[1],
-                    { TmpSamples, Params.Cmp }
-                };
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
@@ -676,11 +667,6 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
                 int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
                 xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
-                std::pair<const uint16*, eCmp> SamplesRecYCbCr[3] = {
-                    RecSamplesBlockV[0],
-                    RecSamplesBlockV[1],
-                    { TmpSamples, Params.Cmp }
-                };
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
@@ -700,11 +686,6 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
                 int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
                 xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
-                std::pair<const uint16*, eCmp> SamplesRecYCbCr[3] = {
-                    RecSamplesBlockV[0],
-                    RecSamplesBlockV[1],
-                    { TmpSamples, Params.Cmp }
-                };
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
