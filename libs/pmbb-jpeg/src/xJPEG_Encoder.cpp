@@ -4,7 +4,7 @@
     SPDX-License-Identifier: BSD-3-Clause
 */
 #include "xJPEG_Encoder.h"
-#include "xJPEG_Transform.h"
+#include "xJPEG_Transform.h"0
 #include "xJPEG_TransformConstants.h"
 #include "xJPEG_Scan.h"
 #include "xJPEG_EntropyHuffman.h"
@@ -326,7 +326,7 @@ void xAdvancedEncoder::xEncodePictureWithRGB(xByteBuffer* OutputBuffer, const xP
 
     uint64 TP2 = m_GatherTimeStats ? xTSC() : 0;
 
-    if (m_OptQuantCoeffs) { xEstimateLambda(Picture); }
+    if (m_OptQuantCoeffs) { xEstimateLambdaRGB(Picture, PictureRGB); }
 
     uint64 TP3 = m_GatherTimeStats ? xTSC() : 0;
 
@@ -1077,6 +1077,11 @@ int64V4 xAdvancedEncoder::xCalcDistPic(const int16* CoeffsQuantScanV[], const xQ
   }
   return SSDs;
 }
+
+
+// ====================================================================================================
+// LAMBDA
+// ====================================================================================================
 void xAdvancedEncoder::xEstimateLambda(const xPicYUV* Picture)
 {
   static constexpr flt64 NaN = std::numeric_limits<flt64>::quiet_NaN();
@@ -1209,6 +1214,114 @@ void xAdvancedEncoder::xEstimateLambda(const xPicYUV* Picture)
     fmt::print("Lambda = {} {} {}\n", m_Lambda[0], m_Lambda[1], m_Lambda[2]);
   }
 }
+
+// ====================================================================================================
+// LAMBDA - RGB
+// ====================================================================================================
+
+int64V4 xAdvancedEncoder::xCalcDistPicSSDRGB(const xPicYUV* Tst, const xPicP* Ref)
+{
+    int64V4 SSDs = xMakeVec4<int64>(0);
+    for (int32 CmpIdx = 0; CmpIdx < m_NumOfComponents; CmpIdx++)
+    {
+        m_ThPI.storeTask([&SSDs, &Tst, &Ref, CmpIdx](int32 /*ThIdx*/) { eCmp c = (eCmp)CmpIdx; SSDs[CmpIdx] = xDistortion::CalcSSD(Tst->getAddr(c), Ref->getAddr(c), Tst->getStride(c), Ref->getStride(c), Tst->getWidth(c), Tst->getHeight(c), Ref->getBitDepth()); });
+    }
+    m_ThPI.executeStoredTasks();
+
+    return SSDs;
+}
+
+
+int64V4 xAdvancedEncoder::xCalcDistPicRGB(const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicP* PictureRef)
+{
+    const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2], m_CmpCoeffsTransOrg[3] };
+    const int16* ConstCmpCoeffsTransRec[] = { m_CmpCoeffsTransRec[0], m_CmpCoeffsTransRec[1], m_CmpCoeffsTransRec[2], m_CmpCoeffsTransRec[3] };
+
+    xInvScanQuantPic(m_CmpCoeffsTransRec, CoeffsQuantScanV, Quant);
+
+    int64V4 SSDs = xMakeVec4<int64>(0);
+
+    if (m_BlkOptDistCalcMode == eCalkMd::Exact)
+    {
+        xInvTransformPic(&m_PicRec, ConstCmpCoeffsTransRec);
+        SSDs = xCalcDistPicSSDRGB(&m_PicRec, PictureRef);
+    }
+    else //m_BlkOptDistCalcMode == eCalkMd::Approx
+    {
+        SSDs = xEstDistPicSSD(ConstCmpCoeffsTransRec, ConstCmpCoeffsTransOrg);
+    }
+    return SSDs;
+}
+
+
+
+
+void xAdvancedEncoder::xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* PictureRGB)
+{
+    static constexpr flt64 NaN = std::numeric_limits<flt64>::quiet_NaN();
+
+    if (m_LambdaEstMode == eLmbd::Exhaustive)
+    {
+        const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2], m_CmpCoeffsTransOrg[3] };
+        const int16* ConstCmpCoeffsQuantScan[] = { m_CmpCoeffsQuantScan[0], m_CmpCoeffsQuantScan[1], m_CmpCoeffsQuantScan[2], m_CmpCoeffsQuantScan[3] };
+        const int16* ConstCmpCoeffsQuantScanAux[] = { m_CmpCoeffsQuantScanAux[0], m_CmpCoeffsQuantScanAux[1], m_CmpCoeffsQuantScanAux[2], m_CmpCoeffsQuantScanAux[3] };
+
+        //current point
+        int64V4 EstNumBitsMain = xCalcBitsPic(ConstCmpCoeffsQuantScan);
+        int64V4 DistortionMain = xCalcDistPicRGB(ConstCmpCoeffsQuantScan, m_QuantMain, PictureRGB);
+
+        //lower point
+        int64V4 EstNumBitsAuxD = { 0,0,0,0 };
+        int64V4 DistortionAuxD = { 0,0,0,0 };
+        if (m_Quality > 1)
+        {
+            xFwdQuantScanPic(m_CmpCoeffsQuantScanAux, ConstCmpCoeffsTransOrg, m_QuantAuxD);
+            EstNumBitsAuxD = xCalcBitsPic(ConstCmpCoeffsQuantScanAux);
+            DistortionAuxD = xCalcDistPicRGB(ConstCmpCoeffsQuantScanAux, m_QuantAuxD, PictureRGB);
+        }
+
+        //higher point
+        int64V4 EstNumBitsAuxI = { 0,0,0,0 };
+        int64V4 DistortionAuxI = { 0,0,0,0 };
+        if (m_Quality < 100)
+        {
+            xFwdQuantScanPic(m_CmpCoeffsQuantScanAux, ConstCmpCoeffsTransOrg, m_QuantAuxI);
+            EstNumBitsAuxI = xCalcBitsPic(ConstCmpCoeffsQuantScanAux);
+            DistortionAuxI = xCalcDistPicRGB(ConstCmpCoeffsQuantScanAux, m_QuantAuxI, PictureRGB);
+        }
+
+        //local lambda
+        int64V4 DeltaEstNumBitsD = EstNumBitsMain - EstNumBitsAuxD;
+        int64V4 DeltaDistortionD = DistortionMain - DistortionAuxD;
+        int64V4 DeltaEstNumBitsI = EstNumBitsMain - EstNumBitsAuxI;
+        int64V4 DeltaDistortionI = DistortionMain - DistortionAuxI;
+
+        flt64V4 LambdaD = -(flt64V4)DeltaDistortionD / (flt64V4)DeltaEstNumBitsD;
+        flt64V4 LambdaI = -(flt64V4)DeltaDistortionI / (flt64V4)DeltaEstNumBitsI;
+        if (m_Quality > 1 && m_Quality < 100) { m_Lambda = (LambdaD + LambdaI) / 2.0; }
+        else if (m_Quality > 1) { m_Lambda = LambdaD; }
+        else if (m_Quality < 100) { m_Lambda = LambdaI; }
+
+        if (m_VerboseLevel >= 8)
+        {
+            std::string Dump = "LambdaEstimation\n";
+            Dump += fmt::format("QuantMain EstNumBits={:d} {:d} {:d}    Distortion={:d} {:d} {:d}\n", EstNumBitsMain[0], EstNumBitsMain[1], EstNumBitsMain[2], DistortionMain[0], DistortionMain[1], DistortionMain[2]);
+            Dump += fmt::format("QuantAuxD EstNumBits={:d} {:d} {:d}    Distortion={:d} {:d} {:d}\n", EstNumBitsAuxD[0], EstNumBitsAuxD[1], EstNumBitsAuxD[2], DistortionAuxD[0], DistortionAuxD[1], DistortionAuxD[2]);
+            Dump += fmt::format("QuantAuxI EstNumBits={:d} {:d} {:d}    Distortion={:d} {:d} {:d}\n", EstNumBitsAuxI[0], EstNumBitsAuxI[1], EstNumBitsAuxI[2], DistortionAuxI[0], DistortionAuxI[1], DistortionAuxI[2]);
+            Dump += fmt::format("LambdaD = {} {} {}\n", LambdaD[0], LambdaD[1], LambdaD[2]);
+            Dump += fmt::format("LambdaI = {} {} {}\n", LambdaI[0], LambdaI[1], LambdaI[2]);
+            fmt::print("{}", Dump);
+        }
+    }
+    else { assert(0); }
+
+    if (m_VerboseLevel >= 6)
+    {
+        fmt::print("Lambda = {} {} {}\n", m_Lambda[0], m_Lambda[1], m_Lambda[2]);
+    }
+}
+
+
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // RDOQ

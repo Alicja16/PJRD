@@ -124,6 +124,15 @@ protected:
   int64V4 xCalcDistPic    (const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicYUV* PictureRef);
   void    xEstimateLambda (const xPicYUV* Picture);
 
+  // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ -
+  // Lambda - RGB
+  int64V4 xCalcDistPicSSDRGB(const xPicYUV* Tst, const xPicP* RefRGB);
+  int64V4 xEstDistPicSSDRGB(const int16* CoeffsTransOrgV[], const int16* CoeffsTransRecV[]);
+  int64V4 xCalcDistPicRGB(const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicP* PictureRefRGB);
+
+  void    xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* PictureRGB);
+  // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ -
+
 
 
   //RDOQ
@@ -138,7 +147,8 @@ protected:
   
 
   // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- private:
+  //RDOQ-RGB
+  private:
      struct xCmpCandtParams
      {
          const eCmp         Cmp;
@@ -150,7 +160,7 @@ protected:
          int32              LastDC;
      };
   
-  //RDOQ-RGB
+  
   void   xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB);
   void   xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void   xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx);
