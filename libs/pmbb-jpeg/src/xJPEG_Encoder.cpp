@@ -427,57 +427,46 @@ void xAdvancedEncoder::xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const i
 
 void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[] /*apprx*/, const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx) {
     //calculate MCU position
-    int32 MCU_PosV = MCU_Idx / m_NumMCUsInWidth; // index / amount_in_row
-    int32 MCU_PosH = MCU_Idx % m_NumMCUsInWidth; // index % amount_in_row
-    //          H =
-    //          0   1   2   3
+    const int32 MCU_PosV = MCU_Idx / m_NumMCUsInWidth; // index / amount_in_row -> pos in MCU_rows
+    const int32 MCU_PosH = MCU_Idx % m_NumMCUsInWidth; // index % amount_in_row -> pos in MCU_columns
+      
+    //     H =  0   1   2   3
 
     //V = 0     0   1   2   3
     //V = 1     4   5   6   7
     //V = 2     8   9  10  11
 
 
-    // calculate blocks
-    // c_BS = 8
-    const int32 BlockPosV = MCU_PosV * c_BS;  // starting_sample_y
-    const int32 BlockPosH = MCU_PosH * c_BS;  // starting_sample_x
-    const int32 BlockResV = m_CmpHeight[0] - BlockPosV; // from starting_to_edge y
-    const int32 BlockResH = m_CmpWidth[0] - BlockPosH; // from starting_to_edge x
+    const int32 MCU_Width = c_BS * m_SampFactorHor[0];
+    const int32 MCU_Height = c_BS * m_SampFactorVer[0];
+
+    // real position in picture:
+    const int32 MCU_InPic_PosV = MCU_PosV * MCU_Width; // starting_sample_y
+    const int32 MCU_InPic_PosH = MCU_PosH * MCU_Height; // starting_sample_x
+    const int32 MCU_InPic_ResV = m_CmpHeight[0] - MCU_InPic_PosV; // from starting_to_edge y
+    const int32 MCU_InPic_ResH = m_CmpWidth[0] - MCU_InPic_PosH; // from starting_to_edge x
 
 
     //org samples buffer
-    PMBB_ALIGN_JPEG_BLK uint16 SamplesOrgRGB[3][c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 SamplesOrgRGB[3][256];
 
 
     for (int32 RGBIdx = 0; RGBIdx < m_NumOfComponents; RGBIdx++){
         const uint16* RGBPtr = RGBPtrV[RGBIdx];
         // (x0, y0) = (0, 0) + starting_sample_y * margin + starting_sample_x
-        const uint16* BlockPtr = RGBPtr + BlockPosV * StrideRGB + BlockPosH;
+        const uint16* MCUPtr = RGBPtr + MCU_InPic_PosV * StrideRGB + MCU_InPic_PosH;
 
 
-        if (BlockResV >= 8 && BlockResH >= 8) {loadEntireBlock(SamplesOrgRGB[RGBIdx], BlockPtr, StrideRGB);}
-        else if (BlockResV > 0 && BlockResH > 0) {loadExtendBlock(SamplesOrgRGB[RGBIdx], BlockPtr, StrideRGB, xMin(BlockResH, c_BS), xMin(BlockResV, c_BS));}
-        else { zeroEntireBlock(SamplesOrgRGB[RGBIdx]); }
+        if (MCU_InPic_ResV >= MCU_Height && MCU_InPic_ResH >= MCU_Width) {loadEntireArea(SamplesOrgRGB[RGBIdx], MCUPtr, StrideRGB, MCU_Width, MCU_Height);}
+        else if (MCU_InPic_ResV > 0 && MCU_InPic_ResH > 0) {loadExtendArea(SamplesOrgRGB[RGBIdx], MCUPtr, StrideRGB, xMin(MCU_InPic_ResH, MCU_Width), xMin(MCU_InPic_ResV, MCU_Height));}
+        else { zeroEntireArea(SamplesOrgRGB[RGBIdx], MCU_Width, MCU_Height); }
     }
 
 
-    int32 BlockIdx = MCU_Idx;
-    const int32 CoeffOffset = BlockIdx << c_L2BA;
-    const bool  FirstInSlc = BlockIdx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
+    // int32 BlockIdx = MCU_Idx;
+    //const int32 CoeffOffset = BlockIdx << c_L2BA;
+    //const bool  FirstInSlc = BlockIdx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
 
-    const int16* CoeffsQuantScanBlockV[3] =
-    {
-        CoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
-        CoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
-        CoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
-    };
-
-    int16* OptCoeffsQuantScanBlockV[3] =
-    {
-        OptCoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
-        OptCoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
-        OptCoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
-    };
 
 
     // --------------------- Planes Params ---------------------------------------------------------------------------
@@ -493,11 +482,26 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     const int32 EntropyIdAC_Cb = m_SOS.getEntropyIdAC(eCmp::CB);
     const int32 EntropyIdAC_Cr = m_SOS.getEntropyIdAC(eCmp::CR);
 
-    const flt64 Lambda_Y = m_Lambda[(int32)eCmp::LM];
+
 
     const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
     const int32 LastDC_Cb = FirstInSlc ? 0 : CoeffsQuantScanV[1][CoeffOffset - c_BA];
     const int32 LastDC_Cr = FirstInSlc ? 0 : CoeffsQuantScanV[2][CoeffOffset - c_BA];
+
+
+    const int16* CoeffsQuantScanBlockV[3] =
+    {
+        CoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
+        CoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
+        CoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
+    };
+
+    int16* OptCoeffsQuantScanBlockV[3] =
+    {
+        OptCoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
+        OptCoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
+        OptCoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
+    };
 
 
     const xCmpCandtParams Params_Y{
@@ -537,6 +541,28 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     // ------------------------------------------------------------------------------------------------
 
     // # 1. Y optimization
+
+    int32 BlockIdx = MCU_Idx * m_SampFactorVer[(int32)eCmp::LM] * m_SampFactorHor[(int32)eCmp::LM];
+    for (int32 V = 0; V < m_SampFactorVer[(int32)eCmp::LM]; V++)
+    {
+        const int32 BlockPosV = MCU_InPic_PosV + V * c_BS;
+        const int32 BlockResV = m_CmpHeight[(int32)eCmp::LM] - BlockPosV;
+
+        for (int32 H = 0; H < m_SampFactorHor[(int32)eCmp::LM]; H++)
+        {
+            const int32 BlockPosH = MCU_InPic_PosH + H * c_BS;
+            const int32 BlockResH = m_CmpWidth[(int32)eCmp::LM] - BlockPosH;
+
+            const int32 CoeffOffset = BlockIdx << c_L2BA;
+
+            // tutaj masz konkretny blok Y 8x8
+            const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
+
+            BlockIdx++;
+        }
+    }
+
+
     xInvProcess(TmpSamples_Cb, CoeffsQuantScanBlockV[(int32)eCmp::CB], Quantizer_Cb);
     xInvProcess(TmpSamples_Cr, CoeffsQuantScanBlockV[(int32)eCmp::CR], Quantizer_Cr);
 

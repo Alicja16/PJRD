@@ -127,6 +127,61 @@ public:
       Src += c_BS; Dst += DstStride;
     }
   }
+
+
+  //----------------------------------------------------------------------------------------------------------------------------------------------------------
+  // for MCU areas
+  //----------------------------------------------------------------------------------------------------------------------------------------------------------
+  static inline void loadEntireArea(uint16* restrict Dst, const uint16* Src, const int32 SrcStride, const int32 MCUWidth, const int32 MCUHeight)
+  {
+      for (int32 y = 0; y < MCUHeight; y++)
+      {
+          ::memcpy(Dst, Src, MCUWidth * sizeof(uint16));
+          Src += SrcStride; Dst += MCUWidth;
+      }
+  }
+
+  static inline void storeEntireArea(uint16* restrict Dst, const uint16* Src, const int32 MCUWidth, const int32 MCUHeight, int32 DstStride)
+  {
+      for (int32 y = 0; y < MCUHeight; y++)
+      {
+          ::memcpy(Dst, Src, MCUWidth * sizeof(uint16));
+          Src += MCUWidth; Dst += DstStride;
+      }
+  }
+
+  static inline void zeroEntireArea(uint16* restrict Dst, const int32 MCUWidth, const int32 MCUHeight)
+  {
+      memset(Dst, 0, MCUWidth * MCUHeight * sizeof(int16));
+  }
+
+  static inline void loadExtendArea(uint16* restrict Dst, const uint16* Src, const int32 SrcStride, const int32 MCUWidth, const int32 MCUHeight, const int32 AvailableWidth, const int32 AvailableHeight)
+  {
+      int32 y = 0;
+      for (; y < AvailableHeight; y++)
+      {
+          int32 x = 0;
+          for (; x < AvailableWidth; x++) { Dst[x] = Src[x]; }
+          for (; x < MCUWidth; x++) { Dst[x] = Dst[AvailableWidth - 1]; }
+          Dst += MCUWidth;
+          Src += SrcStride;
+      }
+      Src = Dst - MCUWidth;
+      for (; y < MCUHeight; y++)
+      {
+          memcpy(Dst, Src, MCUWidth * sizeof(uint16));
+          Dst += MCUWidth;
+      }
+  }
+
+  static inline void storePartialArea(uint16* restrict Dst, const uint16* Src, const int32 MCUWidth, const int32 MCUHeight, const int32 AvailableWidth, const int32 AvailableHeight, int32 DstStride)
+  {
+      for (int32 y = 0; y < AvailableHeight; y++)
+      {
+          ::memcpy(Dst, Src, AvailableWidth * sizeof(uint16));
+          Src += MCUWidth; Dst += DstStride;
+      }
+  }
 };
 
 //=====================================================================================================================================================================================
