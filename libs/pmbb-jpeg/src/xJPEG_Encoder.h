@@ -42,6 +42,13 @@ protected:
   //lambdas
   flt64V4 m_Lambda = { 1.0, 1.0, 1.0, 1.0 };
 
+  // ==============================================================================================
+  // RGB
+  // ==============================================================================================
+  flt64 m_LambdaRGB;
+  int32 RGB_weights[3] = {0,0,0};
+  // ==============================================================================================
+
   //Tools
   xQuantizerSet m_QuantMain;
   xQuantizerSet m_QuantAuxD;
@@ -131,6 +138,8 @@ protected:
   int64V4 xCalcDistPicRGB(const int16* CoeffsQuantScanV[], const xQuantizerSet& Quant, const xPicP* PictureRefRGB);
 
   void    xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* PictureRGB);
+
+  void    xDetermineLambaWeightsRGB(const int32 YCbCr_factors[3]);
   // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ -
 
 
