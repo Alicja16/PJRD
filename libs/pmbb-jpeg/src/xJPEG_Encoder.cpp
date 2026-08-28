@@ -425,7 +425,8 @@ void xAdvancedEncoder::xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const i
 }
 
 
-void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[] /*apprx*/, const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx) {
+void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[] /*apprx*/, const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx)
+{
     //calculate MCU position
     const int32 MCU_PosV = MCU_Idx / m_NumMCUsInWidth; // index / amount_in_row -> pos in MCU_rows
     const int32 MCU_PosH = MCU_Idx % m_NumMCUsInWidth; // index % amount_in_row -> pos in MCU_columns
@@ -441,14 +442,14 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     const int32 MCU_Height = c_BS * m_SampFactorVer[0];
 
     // real position in picture:
-    const int32 MCU_InPic_PosV = MCU_PosV * MCU_Width; // starting_sample_y
-    const int32 MCU_InPic_PosH = MCU_PosH * MCU_Height; // starting_sample_x
+    const int32 MCU_InPic_PosV = MCU_PosV * MCU_Height; // starting_sample_y
+    const int32 MCU_InPic_PosH = MCU_PosH * MCU_Width; // starting_sample_x
     const int32 MCU_InPic_ResV = m_CmpHeight[0] - MCU_InPic_PosV; // from starting_to_edge y
     const int32 MCU_InPic_ResH = m_CmpWidth[0] - MCU_InPic_PosH; // from starting_to_edge x
 
 
     //org samples buffer
-    PMBB_ALIGN_JPEG_BLK uint16 SamplesOrgRGB[3][256];
+    PMBB_ALIGN_JPEG_BLK uint16 SamplesOrgRGB[3][4*c_BA];
 
 
     for (int32 RGBIdx = 0; RGBIdx < m_NumOfComponents; RGBIdx++){
@@ -458,16 +459,9 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
 
 
         if (MCU_InPic_ResV >= MCU_Height && MCU_InPic_ResH >= MCU_Width) {loadEntireArea(SamplesOrgRGB[RGBIdx], MCUPtr, StrideRGB, MCU_Width, MCU_Height);}
-        else if (MCU_InPic_ResV > 0 && MCU_InPic_ResH > 0) {loadExtendArea(SamplesOrgRGB[RGBIdx], MCUPtr, StrideRGB, xMin(MCU_InPic_ResH, MCU_Width), xMin(MCU_InPic_ResV, MCU_Height));}
+        else if (MCU_InPic_ResV > 0 && MCU_InPic_ResH > 0) {loadExtendArea(SamplesOrgRGB[RGBIdx], MCUPtr, StrideRGB, MCU_Width, MCU_Height, xMin(MCU_InPic_ResH, MCU_Width), xMin(MCU_InPic_ResV, MCU_Height));}
         else { zeroEntireArea(SamplesOrgRGB[RGBIdx], MCU_Width, MCU_Height); }
     }
-
-
-    // int32 BlockIdx = MCU_Idx;
-    //const int32 CoeffOffset = BlockIdx << c_L2BA;
-    //const bool  FirstInSlc = BlockIdx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
-
-
 
     // --------------------- Planes Params ---------------------------------------------------------------------------
     const xQuantizer& Quantizer_Y = m_QuantMain.getQuantizer(m_SOF.getQuantTableId(eCmp::LM));
@@ -482,41 +476,34 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     const int32 EntropyIdAC_Cb = m_SOS.getEntropyIdAC(eCmp::CB);
     const int32 EntropyIdAC_Cr = m_SOS.getEntropyIdAC(eCmp::CR);
 
-
-
-    const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
-    const int32 LastDC_Cb = FirstInSlc ? 0 : CoeffsQuantScanV[1][CoeffOffset - c_BA];
-    const int32 LastDC_Cr = FirstInSlc ? 0 : CoeffsQuantScanV[2][CoeffOffset - c_BA];
-
+    // Y - prep
+    const int32 NumYBlocks = m_SampFactorHor[(int32)eCmp::LM] * m_SampFactorVer[(int32)eCmp::LM];
+    const int32 CoeffOffset = MCU_Idx << c_L2BA;
 
     const int16* CoeffsQuantScanBlockV[3] =
     {
-        CoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
+        CoeffsQuantScanV[(int32)eCmp::LM] + NumYBlocks * CoeffOffset,
         CoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
         CoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
     };
 
     int16* OptCoeffsQuantScanBlockV[3] =
     {
-        OptCoeffsQuantScanV[(int32)eCmp::LM] + CoeffOffset,
+        OptCoeffsQuantScanV[(int32)eCmp::LM] + NumYBlocks * CoeffOffset,
         OptCoeffsQuantScanV[(int32)eCmp::CB] + CoeffOffset,
         OptCoeffsQuantScanV[(int32)eCmp::CR] + CoeffOffset
     };
 
+    const bool  FirstInSlc = MCU_Idx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
+    const int32 LastDC_Cb = FirstInSlc ? 0 : CoeffsQuantScanV[1][CoeffOffset - c_BA];
+    const int32 LastDC_Cr = FirstInSlc ? 0 : CoeffsQuantScanV[2][CoeffOffset - c_BA];
 
-    const xCmpCandtParams Params_Y{
-        eCmp::LM,
-        CoeffsQuantScanBlockV[(int32)eCmp::LM],
-        &Quantizer_Y,
-        EntropyIdDC_Y,
-        EntropyIdAC_Y,
-        m_LambdaRGB,
-        LastDC_Y
-    };
+    const int32 NumberBlockInMCU = 0;
 
     const xCmpCandtParams Params_Cb{
         eCmp::CB,
         CoeffsQuantScanBlockV[(int32)eCmp::CB],
+        NumberBlockInMCU,
         &Quantizer_Cb,
         EntropyIdDC_Cb,
         EntropyIdAC_Cb,
@@ -527,6 +514,7 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     const xCmpCandtParams Params_Cr{
         eCmp::CR,
         CoeffsQuantScanBlockV[(int32)eCmp::CR],
+        NumberBlockInMCU,
         &Quantizer_Cr,
         EntropyIdDC_Cr,
         EntropyIdAC_Cr,
@@ -535,34 +523,12 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     };
 
     //ready to -> RGB
-    PMBB_ALIGN_JPEG_BLK uint16  TmpSamples_Y[c_BA]; 
+    PMBB_ALIGN_JPEG_BLK uint16  TmpSamples_Y[4 * c_BA];
     PMBB_ALIGN_JPEG_BLK uint16  TmpSamples_Cb[c_BA];
     PMBB_ALIGN_JPEG_BLK uint16  TmpSamples_Cr[c_BA];
     // ------------------------------------------------------------------------------------------------
 
     // # 1. Y optimization
-
-    int32 BlockIdx = MCU_Idx * m_SampFactorVer[(int32)eCmp::LM] * m_SampFactorHor[(int32)eCmp::LM];
-    for (int32 V = 0; V < m_SampFactorVer[(int32)eCmp::LM]; V++)
-    {
-        const int32 BlockPosV = MCU_InPic_PosV + V * c_BS;
-        const int32 BlockResV = m_CmpHeight[(int32)eCmp::LM] - BlockPosV;
-
-        for (int32 H = 0; H < m_SampFactorHor[(int32)eCmp::LM]; H++)
-        {
-            const int32 BlockPosH = MCU_InPic_PosH + H * c_BS;
-            const int32 BlockResH = m_CmpWidth[(int32)eCmp::LM] - BlockPosH;
-
-            const int32 CoeffOffset = BlockIdx << c_L2BA;
-
-            // tutaj masz konkretny blok Y 8x8
-            const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
-
-            BlockIdx++;
-        }
-    }
-
-
     xInvProcess(TmpSamples_Cb, CoeffsQuantScanBlockV[(int32)eCmp::CB], Quantizer_Cb);
     xInvProcess(TmpSamples_Cr, CoeffsQuantScanBlockV[(int32)eCmp::CR], Quantizer_Cr);
 
@@ -571,37 +537,51 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
         { TmpSamples_Cr, eCmp::CR }
     };
 
-    
-    const int32 OrgBitsDC_Cb = m_EntropyHuffEst.EstimateBlockDC(CoeffsQuantScanBlockV[(int32)eCmp::CB], LastDC_Cb, EntropyIdDC_Cb);
-    const int32 OrgBitsAC_Cb = m_EntropyHuffEst.EstimateBlockAC(CoeffsQuantScanBlockV[(int32)eCmp::CB], EntropyIdAC_Cb);
 
-    const int32 OrgBitsDC_Cr = m_EntropyHuffEst.EstimateBlockDC(CoeffsQuantScanBlockV[(int32)eCmp::CR], LastDC_Cr, EntropyIdDC_Cr);
-    const int32 OrgBitsAC_Cr = m_EntropyHuffEst.EstimateBlockAC(CoeffsQuantScanBlockV[(int32)eCmp::CR], EntropyIdAC_Cr);
+    memcpy(OptCoeffsQuantScanBlockV[(int32)eCmp::LM], CoeffsQuantScanBlockV[(int32)eCmp::LM], NumYBlocks * c_BA * sizeof(int16));
 
-    const int32  Bits_Cb_Cr = OrgBitsDC_Cb + OrgBitsAC_Cb + OrgBitsDC_Cr + OrgBitsAC_Cr;
+    int32 BlockIdx = MCU_Idx * m_SampFactorVer[(int32)eCmp::LM] * m_SampFactorHor[(int32)eCmp::LM];
+    for (int32 V = 0; V < m_SampFactorVer[(int32)eCmp::LM]; V++)
+    {
+        for (int32 H = 0; H < m_SampFactorHor[(int32)eCmp::LM]; H++)
+        {
+            const int32 CoeffOffset = BlockIdx << c_L2BA;
+            const bool  FirstInSlc = BlockIdx == 0 || (m_RestartInterval > 0 && MCU_Idx % m_RestartInterval == 0);
+            const int32 LastDC_Y = FirstInSlc ? 0 : CoeffsQuantScanV[0][CoeffOffset - c_BA];
 
-    xOptQuantHuffTestCandtsRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::LM], RecSamplesBlockV, SamplesOrgRGB, Params_Y, Bits_Cb_Cr);
+            const int32 YBlockInMCU = V * m_SampFactorHor[(int32)eCmp::LM] + H;
 
+            
+            int16* OptCoeffsQuantScanY = OptCoeffsQuantScanBlockV[(int32)eCmp::LM] + YBlockInMCU * c_BA;
+
+            xCmpCandtParams Params_Y{
+                eCmp::LM,
+                OptCoeffsQuantScanBlockV[(int32)eCmp::LM],
+                YBlockInMCU,
+                &Quantizer_Y,
+                EntropyIdDC_Y,
+                EntropyIdAC_Y,
+                m_LambdaRGB,
+                LastDC_Y
+             };
+
+            xOptQuantHuffTestCandtsBlockRGB(OptCoeffsQuantScanY, RecSamplesBlockV, SamplesOrgRGB, Params_Y);
+
+            uint16* TmpSamplesYBlock = TmpSamples_Y + YBlockInMCU * c_BA;
+            xInvProcess(TmpSamplesYBlock, OptCoeffsQuantScanY, Quantizer_Y);
+
+            BlockIdx++;
+        }
+    }
 
 
     // # 2. Cb optimization
-    xInvProcess(TmpSamples_Y, OptCoeffsQuantScanBlockV[(int32)eCmp::LM], Quantizer_Y);
     // xInvProcess(TmpSamples_Cr, CoeffsQuantScanBlockV[2], Quantizer_Cr);  - already have that
 
-    RecSamplesBlockV[0] = { TmpSamples_Y, eCmp::LM };
+    RecSamplesBlockV[0] = { TmpSamples_Y, eCmp::LM }; 
     RecSamplesBlockV[1] = { TmpSamples_Cr, eCmp::CR };
 
-    const int32 OptBitsDC_Y = m_EntropyHuffEst.EstimateBlockDC(OptCoeffsQuantScanBlockV[(int32)eCmp::LM], LastDC_Y, EntropyIdDC_Y);
-    const int32 OptBitsAC_Y = m_EntropyHuffEst.EstimateBlockAC(OptCoeffsQuantScanBlockV[(int32)eCmp::LM], EntropyIdAC_Y);
-
-    //const int32 OrgBitsDC_Cr = m_EntropyHuffEst.EstimateBlockDC(CoeffsQuantScanBlockV[2], LastDC_Cr, EntropyIdDC_Cr); - already have that
-    //const int32 OrgBitsAC_Cr = m_EntropyHuffEst.EstimateBlockAC(CoeffsQuantScanBlockV[2], EntropyIdAC_Cr); - already have that
-
-    const int32  Bits_Y_Cr = OptBitsDC_Y + OptBitsAC_Y + OrgBitsDC_Cr + OrgBitsAC_Cr;
-
-    xOptQuantHuffTestCandtsRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::CB], RecSamplesBlockV, SamplesOrgRGB, Params_Cb, Bits_Y_Cr);
-
-
+    xOptQuantHuffTestCandtsBlockRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::CB], RecSamplesBlockV, SamplesOrgRGB, Params_Cb);
 
 
     // # 3. Cr optimization
@@ -611,19 +591,14 @@ void xAdvancedEncoder::xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const i
     RecSamplesBlockV[0] = { TmpSamples_Y, eCmp::LM };
     RecSamplesBlockV[1] = { TmpSamples_Cb, eCmp::CB };
 
-    //const int32 OptBitsDC_Y = m_EntropyHuffEst.EstimateBlockDC(OptCoeffsQuantScanBlockV[0], LastDC_Y, EntropyIdDC_Y); -already have that
-    //const int32 OptBitsAC_Y = m_EntropyHuffEst.EstimateBlockAC(OptCoeffsQuantScanBlockV[0], EntropyIdAC_Y); -already have that
 
-    const int32 OptBitsDC_Cb = m_EntropyHuffEst.EstimateBlockDC(OptCoeffsQuantScanBlockV[(int32)eCmp::CB], LastDC_Cb, EntropyIdDC_Cb);
-    const int32 OptBitsAC_Cb = m_EntropyHuffEst.EstimateBlockAC(OptCoeffsQuantScanBlockV[(int32)eCmp::CB], EntropyIdAC_Cb);
-
-    const int32  Bits_Y_Cb = OptBitsDC_Y + OptBitsAC_Y + OptBitsDC_Cb + OptBitsAC_Cb;
-
-    xOptQuantHuffTestCandtsRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::CR], RecSamplesBlockV, SamplesOrgRGB, Params_Cr, Bits_Y_Cb);
+    xOptQuantHuffTestCandtsBlockRGB(OptCoeffsQuantScanBlockV[(int32)eCmp::CR], RecSamplesBlockV, SamplesOrgRGB, Params_Cr);
 }
 
 
-void xAdvancedEncoder::xInvProcess(uint16* TmpSamples, const int16* CoeffsQuantScanBlockV, const xQuantizer& Quantizer) {
+
+void xAdvancedEncoder::xInvProcess(uint16* TmpSamples, const int16* CoeffsQuantScanBlockV, const xQuantizer& Quantizer)
+{
     PMBB_ALIGN_JPEG_BLK int16  TmpQuantCoeffs[c_BA];
     PMBB_ALIGN_JPEG_BLK int16  TmpTransCoeffs[c_BA];
 
@@ -634,18 +609,40 @@ void xAdvancedEncoder::xInvProcess(uint16* TmpSamples, const int16* CoeffsQuantS
 }
 
 
-void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, const std::pair<const uint16*, eCmp> RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][c_BA], const xCmpCandtParams& Params, const int32 BitsOtherPlanes) {
-    int32 LastNonZero = xEntropyUtils::findLastNonZero(Params.CoeffsQuantScanBlockV);
-    if (LastNonZero == 0) { memcpy(OptCoeffQuantScan, Params.CoeffsQuantScanBlockV, c_BA * sizeof(int16)); return; } //only DC - nothing to do here
-
-    const int32 BitsCandtCmp_DC = m_EntropyHuffEst.EstimateBlockDC(Params.CoeffsQuantScanBlockV, Params.LastDC, Params.EntropyIdDC);
-    const int32 BitsCandtCmp_AC = m_EntropyHuffEst.EstimateBlockAC(Params.CoeffsQuantScanBlockV, Params.EntropyIdAC);
-    int32 BestBits = BitsCandtCmp_DC + BitsCandtCmp_AC + BitsOtherPlanes;
 
 
-    PMBB_ALIGN_JPEG_BLK uint16 TmpSamples[c_BA];
+void xAdvancedEncoder::xOptQuantHuffTestCandtsBlockRGB(int16* OptCoeffQuantScan, const std::pair<const uint16*, eCmp> RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][4*c_BA], const xCmpCandtParams& Params) {
+    const int16* CoeffsQuantScanBlock = Params.CoeffsQuantScanBlockV + Params.NumberBlockInMCU * c_BA;
 
-    xInvProcess(TmpSamples, Params.CoeffsQuantScanBlockV, *Params.Quantizer);
+    int32 LastNonZero = xEntropyUtils::findLastNonZero(CoeffsQuantScanBlock);
+    if (LastNonZero == 0) { memcpy(OptCoeffQuantScan, CoeffsQuantScanBlock, c_BA * sizeof(int16)); return; } //only DC - nothing to do here
+
+    const int32 BitsCandtCmp_DC = m_EntropyHuffEst.EstimateBlockDC(CoeffsQuantScanBlock, Params.LastDC, Params.EntropyIdDC);
+    const int32 BitsCandtCmp_AC = m_EntropyHuffEst.EstimateBlockAC(CoeffsQuantScanBlock, Params.EntropyIdAC);
+    int32 BestBits = BitsCandtCmp_DC + BitsCandtCmp_AC;
+
+    PMBB_ALIGN_JPEG_BLK uint16 TmpSamples[4 * c_BA];
+
+    if (Params.Cmp == eCmp::LM)
+    {
+        const int32 NumYBlocks = m_SampFactorHor[(int32)eCmp::LM] * m_SampFactorVer[(int32)eCmp::LM];
+
+        for (int32 YBlockIdx = 0; YBlockIdx < NumYBlocks; YBlockIdx++)
+        {
+            const int16* CoeffsYBlock = Params.CoeffsQuantScanBlockV + YBlockIdx * c_BA;
+
+            uint16* TmpSamplesYBlock = TmpSamples + YBlockIdx * c_BA;
+
+            xInvProcess(TmpSamplesYBlock, CoeffsYBlock, *Params.Quantizer);
+        }
+    }
+    else
+    {
+        xInvProcess(TmpSamples,CoeffsQuantScanBlock,*Params.Quantizer);
+    }
+
+    uint16* const TmpSamplesTestedBlock = TmpSamples + Params.NumberBlockInMCU * c_BA;
+    
 
     std::pair<const uint16*, eCmp> SamplesRecYCbCr[3] = {
         RecSamplesBlockV[0],
@@ -658,7 +655,7 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
 
 
     PMBB_ALIGN_JPEG_BLK int16 TmpCoeffsQuantScan[c_BA];
-    memcpy(TmpCoeffsQuantScan, Params.CoeffsQuantScanBlockV, c_BA * sizeof(int16));
+    memcpy(TmpCoeffsQuantScan, CoeffsQuantScanBlock, c_BA * sizeof(int16));
 
     for (int32 PassIdx = 0; PassIdx < m_NumOptPassesBlock; PassIdx++)
     {
@@ -672,9 +669,9 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
             if (OrgCoeff != 0)
             {
                 TmpCoeffsQuantScan[i] = 0;
-                int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
+                int32  CurrBits = BitsCandtCmp_DC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
-                xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
+                xInvProcess(TmpSamplesTestedBlock, TmpCoeffsQuantScan, *Params.Quantizer);
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
@@ -691,9 +688,9 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
             if (OrgCoeff != -1)
             {
                 TmpCoeffsQuantScan[i] = OrgCoeff + 1;
-                int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
+                int32  CurrBits = BitsCandtCmp_DC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
-                xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
+                xInvProcess(TmpSamplesTestedBlock, TmpCoeffsQuantScan, *Params.Quantizer);
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
@@ -710,9 +707,9 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
             if (OrgCoeff != 1)
             {
                 TmpCoeffsQuantScan[i] = OrgCoeff - 1;
-                int32  CurrBits = BitsCandtCmp_DC + BitsOtherPlanes + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
+                int32  CurrBits = BitsCandtCmp_DC + m_EntropyHuffEst.EstimateBlockAC(TmpCoeffsQuantScan, Params.EntropyIdAC);
 
-                xInvProcess(TmpSamples, TmpCoeffsQuantScan, *Params.Quantizer);
+                xInvProcess(TmpSamplesTestedBlock, TmpCoeffsQuantScan, *Params.Quantizer);
 
                 uint64 CurrDist = xCalcDistRGB(SamplesRecYCbCr, SamplesOrgRGB);
                 flt64  CurrCost = (double)CurrDist + Params.Lambda * (flt64)CurrBits;
@@ -732,7 +729,7 @@ void xAdvancedEncoder::xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, cons
 }
 
 
-uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][c_BA]) {
+uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][4*c_BA]) {
     const uint16* RecSamples[3] = {};
 
     for (int32 i = 0; i < 3; i++)
@@ -744,11 +741,67 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
     const uint16* Cb = RecSamples[(int32)eCmp::CB];
     const uint16* Cr = RecSamples[(int32)eCmp::CR];
 
-    PMBB_ALIGN_JPEG_BLK uint16 RecR[c_BA];
-    PMBB_ALIGN_JPEG_BLK uint16 RecG[c_BA];
-    PMBB_ALIGN_JPEG_BLK uint16 RecB[c_BA];
 
-    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y, Cb, Cr, c_BS, c_BS, c_BS, c_BS, 8, eClrSpcLC::JPEG);
+    const int32 SampHorY = m_SampFactorHor[(int32)eCmp::LM];
+    const int32 SampVerY = m_SampFactorVer[(int32)eCmp::LM];
+
+    const int32 MCU_Width = c_BS * SampHorY;
+    const int32 MCU_Height = c_BS * SampVerY;
+
+
+    PMBB_ALIGN_JPEG_BLK uint16 Y_MCU[4 * c_BA];
+
+    for (int32 V = 0; V < SampVerY; V++)
+    {
+        for (int32 H = 0; H < SampHorY; H++)
+        {
+            const int32 YBlockIdx =
+                V * SampHorY + H;
+
+            const uint16* SrcYBlock =
+                Y + YBlockIdx * c_BA;
+
+            uint16* DstYBlock =
+                Y_MCU
+                + V * c_BS * MCU_Width
+                + H * c_BS;
+
+            storeEntireArea(
+                DstYBlock,
+                SrcYBlock,
+                c_BS,
+                c_BS,
+                MCU_Width
+            );
+        }
+    }
+
+
+    PMBB_ALIGN_JPEG_BLK uint16 Cb_MCU[4 * c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 Cr_MCU[4 * c_BA];
+
+    if (SampHorY == 1 && SampVerY == 1)
+    {
+        memcpy(Cb_MCU, Cb, c_BA * sizeof(uint16));
+        memcpy(Cr_MCU, Cr, c_BA * sizeof(uint16));
+    }
+    else if (SampHorY == 2 && SampVerY == 1)
+    {
+        xPixelOps::UpsampleH( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
+        xPixelOps::UpsampleH( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
+    }
+    else if (SampHorY == 2 && SampVerY == 2)
+    {
+        xPixelOps::UpsampleHV( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
+
+        xPixelOps::UpsampleHV( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
+    }
+
+    PMBB_ALIGN_JPEG_BLK uint16 RecR[4*c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 RecG[4*c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 RecB[4*c_BA];
+
+    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y, Cb, Cr, MCU_Width, MCU_Width, MCU_Width, MCU_Height, 8, eClrSpcLC::JPEG);
 
     uint64 DistRGB = 0;
 
@@ -759,10 +812,10 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
         DistRGB += xDistortion::CalcSSD(
             SamplesOrgRGB[CmpIdx],
             SamplesRecRGB[CmpIdx],
-            c_BS,
-            c_BS,
-            c_BS,
-            c_BS,
+            MCU_Width,
+            MCU_Width,
+            MCU_Width,
+            MCU_Height,
             8
         );
     }

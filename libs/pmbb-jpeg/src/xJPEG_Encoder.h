@@ -162,6 +162,7 @@ protected:
      {
          const eCmp         Cmp;
          const int16*       CoeffsQuantScanBlockV;
+         const int32        NumberBlockInMCU;
          const xQuantizer*  Quantizer;
          int32              EntropyIdDC;
          int32              EntropyIdAC;
@@ -173,9 +174,9 @@ protected:
   void   xOptQuantHuffPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB);
   void   xOptQuantHuffSlcRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB, int32 MCU_IdxFirst, int32 MCU_IdxLast);
   void   xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx);
-  
-  void   xOptQuantHuffTestCandtsRGB(int16* OptCoeffQuantScan, const std::pair<const uint16*, eCmp> RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][c_BA], const xCmpCandtParams& Params, const int32 BitsRecSamples);
-  uint64 xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][c_BA]);
+
+  void   xOptQuantHuffTestCandtsBlockRGB(int16* OptCoeffQuantScan, const std::pair<const uint16*, eCmp> RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][4*c_BA], const xCmpCandtParams& Params);
+  uint64 xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][4*c_BA]);
   
   void   xOptQuantPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB) { xOptQuantHuffPicRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, PictureRGB); }
 

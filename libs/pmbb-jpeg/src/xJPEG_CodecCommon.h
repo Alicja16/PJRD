@@ -152,7 +152,7 @@ public:
 
   static inline void zeroEntireArea(uint16* restrict Dst, const int32 MCUWidth, const int32 MCUHeight)
   {
-      memset(Dst, 0, MCUWidth * MCUHeight * sizeof(int16));
+      memset(Dst, 0, MCUWidth * MCUHeight * sizeof(uint16));
   }
 
   static inline void loadExtendArea(uint16* restrict Dst, const uint16* Src, const int32 SrcStride, const int32 MCUWidth, const int32 MCUHeight, const int32 AvailableWidth, const int32 AvailableHeight)
