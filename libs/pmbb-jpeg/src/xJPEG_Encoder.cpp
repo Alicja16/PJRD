@@ -801,7 +801,7 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
     PMBB_ALIGN_JPEG_BLK uint16 RecG[4*c_BA];
     PMBB_ALIGN_JPEG_BLK uint16 RecB[4*c_BA];
 
-    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y, Cb, Cr, MCU_Width, MCU_Width, MCU_Width, MCU_Height, 8, eClrSpcLC::JPEG);
+    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y_MCU, Cb_MCU, Cr_MCU, MCU_Width, MCU_Width, MCU_Width, MCU_Height, 8, eClrSpcLC::JPEG);
 
     uint64 DistRGB = 0;
 
@@ -1315,7 +1315,63 @@ int64V4 xAdvancedEncoder::xCalcDistPicSSDRGB(const xPicYUV* Tst, const xPicP* Re
     uint16* RecB = RecSamples.data() + 2 * PlaneSize;
 
 
-    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y, Cb, Cr, Width, Tst->getStride(eCmp::LM), Width, Height, 8, eClrSpcLC::JPEG);
+    // ------------------------------------------------------------
+    // ------------------------------------------------------------
+    // UPSAMPLING CB CR 
+    // ------------------------------------------------------------
+    const int32 Y_Stride = Tst->getStride(eCmp::LM);
+    const int32 Cb_Stride = Tst->getStride(eCmp::CB);
+    const int32 Cr_Stride = Tst->getStride(eCmp::CR);
+
+    std::vector<uint16> CbBuffer(Y_Stride * Height);
+    std::vector<uint16> CrBuffer((Y_Stride * Height));
+
+    uint16* CbBufferPtr = CbBuffer.data();
+    uint16* CrBufferPtr = CrBuffer.data();
+
+    const uint16* CbFull = nullptr;
+    const uint16* CrFull = nullptr;
+
+    
+
+    //xPixelOps::UpsampleH(
+    //    Dst,
+    //    Src,
+    //    DstStride,
+    //    SrcStride,
+    //    DstWidth,
+    //    DstHeight
+    //);
+
+    const eCrF ChromaFormat = Tst->getChromaFormat();
+
+
+    if (ChromaFormat == eCrF::CF444)
+    {
+        CbFull = Cb;
+        CrFull = Cr;
+    }
+    else if (ChromaFormat == eCrF::CF422)
+    {
+        xPixelOps::UpsampleH(CbBufferPtr, Cb, Width, Cb_Stride, Width, Height);
+        xPixelOps::UpsampleH(CrBufferPtr, Cr, Width, Cr_Stride, Width, Height);
+
+        CbFull = CbBufferPtr;
+        CrFull = CrBufferPtr;
+    }
+    else if (ChromaFormat == eCrF::CF420)
+    {
+        xPixelOps::UpsampleHV(CbBufferPtr, Cb, Width, Cb_Stride, Width, Height);
+        xPixelOps::UpsampleHV(CrBufferPtr, Cr, Width, Cr_Stride, Width, Height);
+
+        CbFull = CbBufferPtr;
+        CrFull = CrBufferPtr;
+    }
+
+    // ------------------------------------------------------------
+    // ------------------------------------------------------------
+
+    xColorSpace::ConvertYCbCr2RGB(RecR, RecG, RecB, Y, CbFull, CrFull, Width, Tst->getStride(eCmp::LM), Width, Height, 8, eClrSpcLC::JPEG);
 
     int64V4 DistRGB = xMakeVec4<int64>(0);
 
@@ -1391,12 +1447,12 @@ void xAdvancedEncoder::xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* P
 {
     static constexpr flt64 NaN = std::numeric_limits<flt64>::quiet_NaN();
 
-    const int32 YCbCr_factors[3] = { 1,2,1 };
+    // const int32 YCbCr_factors[3] = { 1,2,1 };
 
     const int32 wr = RGB_weights[0];
     const int32 wg = RGB_weights[1];
     const int32 wb = RGB_weights[2];
-    xDetermineLambaWeightsRGB(YCbCr_factors);
+    // xDetermineLambaWeightsRGB(YCbCr_factors);
 
     if (m_LambdaEstMode == eLmbd::Exhaustive)
     {
