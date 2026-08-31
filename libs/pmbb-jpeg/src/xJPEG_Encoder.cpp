@@ -809,7 +809,7 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
 
     for (int32 CmpIdx = 0; CmpIdx < 3; CmpIdx++)
     {
-        DistRGB += xDistortion::CalcSSD(
+        DistRGB += RGB_weights[CmpIdx] * xDistortion::CalcSSD(
             SamplesOrgRGB[CmpIdx],
             SamplesRecRGB[CmpIdx],
             MCU_Width,
@@ -1456,13 +1456,13 @@ void xAdvancedEncoder::xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* P
 
     if (m_LambdaEstMode == eLmbd::Exhaustive)
     {
-        const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2], m_CmpCoeffsTransOrg[3] };
-        const int16* ConstCmpCoeffsQuantScan[] = { m_CmpCoeffsQuantScan[0], m_CmpCoeffsQuantScan[1], m_CmpCoeffsQuantScan[2], m_CmpCoeffsQuantScan[3] };
-        const int16* ConstCmpCoeffsQuantScanAux[] = { m_CmpCoeffsQuantScanAux[0], m_CmpCoeffsQuantScanAux[1], m_CmpCoeffsQuantScanAux[2], m_CmpCoeffsQuantScanAux[3] };
+        const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2]};
+        const int16* ConstCmpCoeffsQuantScan[] = { m_CmpCoeffsQuantScan[0], m_CmpCoeffsQuantScan[1], m_CmpCoeffsQuantScan[2]};
+        const int16* ConstCmpCoeffsQuantScanAux[] = { m_CmpCoeffsQuantScanAux[0], m_CmpCoeffsQuantScanAux[1], m_CmpCoeffsQuantScanAux[2]};
 
         //current point
         int64V4 EstNumBitsMain = xCalcBitsPic(ConstCmpCoeffsQuantScan);
-        int64 EstNumBitsMainTotal = wr*EstNumBitsMain[0] + wg*EstNumBitsMain[1] + wb*EstNumBitsMain[2];
+        int64 EstNumBitsMainTotal = EstNumBitsMain[0] + EstNumBitsMain[1] + EstNumBitsMain[2];
         int64V4 DistortionMain = xCalcDistPicRGB(ConstCmpCoeffsQuantScan, m_QuantMain, PictureRGB);
         int64 DistortionMainTotal = wr * DistortionMain[0] + wg * DistortionMain[1] + wb * DistortionMain[2];
 
@@ -1475,7 +1475,7 @@ void xAdvancedEncoder::xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* P
         {
             xFwdQuantScanPic(m_CmpCoeffsQuantScanAux, ConstCmpCoeffsTransOrg, m_QuantAuxD);
             EstNumBitsAuxD = xCalcBitsPic(ConstCmpCoeffsQuantScanAux);
-            EstNumBitsAuxDTotal = wr * EstNumBitsAuxD[0] + wg * EstNumBitsAuxD[1] + wb * EstNumBitsAuxD[2];
+            EstNumBitsAuxDTotal = EstNumBitsAuxD[0] + EstNumBitsAuxD[1] + EstNumBitsAuxD[2];
             DistortionAuxD = xCalcDistPicRGB(ConstCmpCoeffsQuantScanAux, m_QuantAuxD, PictureRGB);
             DistortionAuxDTotal = wr * DistortionAuxD[0] + wg * DistortionAuxD[1] + wb * DistortionAuxD[2];
         }
@@ -1489,7 +1489,7 @@ void xAdvancedEncoder::xEstimateLambdaRGB(const xPicYUV* Picture, const xPicP* P
         {
             xFwdQuantScanPic(m_CmpCoeffsQuantScanAux, ConstCmpCoeffsTransOrg, m_QuantAuxI);
             EstNumBitsAuxI = xCalcBitsPic(ConstCmpCoeffsQuantScanAux);
-            EstNumBitsAuxITotal = wr * EstNumBitsAuxI[0] + wg * EstNumBitsAuxI[1] + wb * EstNumBitsAuxI[2];
+            EstNumBitsAuxITotal = EstNumBitsAuxI[0] + EstNumBitsAuxI[1] + EstNumBitsAuxI[2];
             DistortionAuxI = xCalcDistPicRGB(ConstCmpCoeffsQuantScanAux, m_QuantAuxI, PictureRGB);
             DistortionAuxITotal = wr * DistortionAuxI[0] + wg * DistortionAuxI[1] + wb * DistortionAuxI[2];
         }
