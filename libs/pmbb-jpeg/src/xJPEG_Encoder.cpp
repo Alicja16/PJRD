@@ -297,16 +297,16 @@ void xAdvancedEncoder::xEncodePicture(xByteBuffer* OutputBuffer, const xPicYUV* 
 
 void xAdvancedEncoder::xEncodePictureWithRGB(xByteBuffer* OutputBuffer, const xPicYUV* Picture, const xPicP* PictureRGB){
 
-//Picture
-//│
-//└── const xPicYUV*
-//      └── Y/Cb/Cr 4:4:4
-//
-// 
-//PictureRGB
-//│
-//└── const xPicP *
-//      └── R/G/B
+    //Picture
+    //│
+    //└── const xPicYUV*
+    //      └── Y/Cb/Cr 4:4:4
+    //
+    // 
+    //PictureRGB
+    //│
+    //└── const xPicP *
+    //      └── R/G/B
 
     const int16* ConstCmpCoeffsTransOrg[] = { m_CmpCoeffsTransOrg[0], m_CmpCoeffsTransOrg[1], m_CmpCoeffsTransOrg[2], m_CmpCoeffsTransOrg[3] };
     const int16* ConstCmpCoeffsQuantScan[] = { m_CmpCoeffsQuantScan[0], m_CmpCoeffsQuantScan[1], m_CmpCoeffsQuantScan[2], m_CmpCoeffsQuantScan[3] };
@@ -755,30 +755,22 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
     {
         for (int32 H = 0; H < SampHorY; H++)
         {
-            const int32 YBlockIdx =
-                V * SampHorY + H;
+            const int32 YBlockIdx = V * SampHorY + H;
+            const uint16* SrcYBlock = Y + YBlockIdx * c_BA;
 
-            const uint16* SrcYBlock =
-                Y + YBlockIdx * c_BA;
+            uint16* DstYBlock = Y_MCU + V * c_BS * MCU_Width + H * c_BS;
 
-            uint16* DstYBlock =
-                Y_MCU
-                + V * c_BS * MCU_Width
-                + H * c_BS;
-
-            storeEntireArea(
-                DstYBlock,
-                SrcYBlock,
-                c_BS,
-                c_BS,
-                MCU_Width
-            );
+            storeEntireArea(DstYBlock, SrcYBlock, c_BS, c_BS, MCU_Width);
         }
     }
 
 
-    PMBB_ALIGN_JPEG_BLK uint16 Cb_MCU[4 * c_BA];
-    PMBB_ALIGN_JPEG_BLK uint16 Cr_MCU[4 * c_BA];
+    PMBB_ALIGN_JPEG_BLK uint16 Cb_MCU[4 * c_BA]; // result
+    PMBB_ALIGN_JPEG_BLK uint16 Cr_MCU[4 * c_BA]; // result
+
+    // chromas + margins -----------------------------------------
+
+    // ----------------------------------------------------------
 
     if (SampHorY == 1 && SampVerY == 1)
     {
@@ -787,14 +779,14 @@ uint64 xAdvancedEncoder::xCalcDistRGB(const std::pair<const uint16*, eCmp> Sampl
     }
     else if (SampHorY == 2 && SampVerY == 1)
     {
-        xPixelOps::UpsampleH( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
-        xPixelOps::UpsampleH( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
+        xPixelOpsSTD::UpsampleH_FIR( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
+        xPixelOpsSTD::UpsampleH_FIR( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
     }
     else if (SampHorY == 2 && SampVerY == 2)
     {
-        xPixelOps::UpsampleHV( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
+        xPixelOpsSTD::UpsampleH_FIR( Cb_MCU, Cb, MCU_Width, c_BS, MCU_Width, MCU_Height);
 
-        xPixelOps::UpsampleHV( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
+        xPixelOpsSTD::UpsampleH_FIR( Cr_MCU, Cr, MCU_Width, c_BS, MCU_Width, MCU_Height);
     }
 
     PMBB_ALIGN_JPEG_BLK uint16 RecR[4*c_BA];
@@ -1353,16 +1345,25 @@ int64V4 xAdvancedEncoder::xCalcDistPicSSDRGB(const xPicYUV* Tst, const xPicP* Re
     }
     else if (ChromaFormat == eCrF::CF422)
     {
-        xPixelOps::UpsampleH(CbBufferPtr, Cb, Width, Cb_Stride, Width, Height);
-        xPixelOps::UpsampleH(CrBufferPtr, Cr, Width, Cr_Stride, Width, Height);
+        xPixelOpsSTD::UpsampleH_FIR(CbBufferPtr, Cb, Width, Cb_Stride, Width, Height, Tst->getBitDepth());
+        xPixelOpsSTD::UpsampleH_FIR(CrBufferPtr, Cr, Width, Cr_Stride, Width, Height, Tst->getBitDepth());
 
         CbFull = CbBufferPtr;
         CrFull = CrBufferPtr;
     }
     else if (ChromaFormat == eCrF::CF420)
     {
-        xPixelOps::UpsampleHV(CbBufferPtr, Cb, Width, Cb_Stride, Width, Height);
-        xPixelOps::UpsampleHV(CrBufferPtr, Cr, Width, Cr_Stride, Width, Height);
+
+        xPicYUV Temp422(Tst->getSize(eCmp::LM), Tst->getBitDepth(), eCrF::CF422, Tst->getMargin());
+        Temp422.fill(0, eCmp::LM);
+
+        xPixelOpsSTD::UpsampleV_FIR(Temp422.getAddr(eCmp::CB), Cb, Width, Cb_Stride, Width, Height, Tst->getBitDepth());
+        xPixelOpsSTD::UpsampleV_FIR(Temp422.getAddr(eCmp::CR), Cr, Width, Cr_Stride, Width, Height, Tst->getBitDepth());
+
+        Temp422.extend(eMrgExt::Nearest);
+        
+        xPixelOpsSTD::UpsampleH_FIR(CbBufferPtr, Temp422.getAddr(eCmp::CB), Width, Cb_Stride, Width, Height, Tst->getBitDepth());
+        xPixelOpsSTD::UpsampleH_FIR(CrBufferPtr, Temp422.getAddr(eCmp::CR), Width, Cr_Stride, Width, Height, Tst->getBitDepth());
 
         CbFull = CbBufferPtr;
         CrFull = CrBufferPtr;
@@ -1404,6 +1405,9 @@ int64V4 xAdvancedEncoder::xCalcDistPicRGB(const int16* CoeffsQuantScanV[], const
     if (m_BlkOptDistCalcMode == eCalkMd::Exact)
     {
         xInvTransformPic(&m_PicRec, ConstCmpCoeffsTransRec);
+
+        m_PicRec.extend(eMrgExt::Nearest); // fullfilling margins
+
         SSDs = xCalcDistPicSSDRGB(&m_PicRec, PictureRef);
     }
     else //m_BlkOptDistCalcMode == eCalkMd::Approx

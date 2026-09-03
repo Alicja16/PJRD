@@ -677,7 +677,11 @@ eAppRes xAppJPEG::validateFrames()
 
   return eAppRes::Good;
 }
-void xAppJPEG::cvtRGBtoYCbCr()
+
+// ==============================================================================================================================================================================
+// Up/DownSamppling with FIR added
+// ==============================================================================================================================================================================
+void xAppJPEG::cvtRGBtoYCbCr()  
 {
   if(m_ChromaFormat == eCrF::CF444)
   {
@@ -695,20 +699,31 @@ void xAppJPEG::cvtRGBtoYCbCr()
       m_PicOrg444->getStride(eCmp::LM), m_PicOrgRGB->getStride(), m_PicOrg444->getWidth(eCmp::LM), m_PicOrg444->getHeight(eCmp::LM),
       m_PicOrg444->getBitDepth(), eClrSpcLC::JPEG);
 
+    m_PicOrg444->extend(eMrgExt::Nearest);
     m_PicOrg4XX->swapBuffer(m_PicOrg444, eCmp::LM);
 
     if(m_ChromaFormat == eCrF::CF422)
     {
-      xPixelOps::DownsampleH(m_PicOrg4XX->getAddr(eCmp::CB), m_PicOrg444->getAddr(eCmp::CB), m_PicOrg4XX->getStride(eCmp::CB), m_PicOrg444->getStride(eCmp::CB), m_PicOrg4XX->getWidth(eCmp::CB), m_PicOrg4XX->getHeight(eCmp::CB));
-      xPixelOps::DownsampleH(m_PicOrg4XX->getAddr(eCmp::CR), m_PicOrg444->getAddr(eCmp::CR), m_PicOrg4XX->getStride(eCmp::CR), m_PicOrg444->getStride(eCmp::CR), m_PicOrg4XX->getWidth(eCmp::CR), m_PicOrg4XX->getHeight(eCmp::CR));
+      xPixelOpsSTD::DownsampleH_FIR(m_PicOrg4XX->getAddr(eCmp::CB), m_PicOrg444->getAddr(eCmp::CB), m_PicOrg4XX->getStride(eCmp::CB), m_PicOrg444->getStride(eCmp::CB), m_PicOrg4XX->getWidth(eCmp::CB), m_PicOrg4XX->getHeight(eCmp::CB), m_PicOrg444->getBitDepth());
+      xPixelOpsSTD::DownsampleH_FIR(m_PicOrg4XX->getAddr(eCmp::CR), m_PicOrg444->getAddr(eCmp::CR), m_PicOrg4XX->getStride(eCmp::CR), m_PicOrg444->getStride(eCmp::CR), m_PicOrg4XX->getWidth(eCmp::CR), m_PicOrg4XX->getHeight(eCmp::CR), m_PicOrg444->getBitDepth());
     }
     else //420
     {
-      xPixelOps::DownsampleHV(m_PicOrg4XX->getAddr(eCmp::CB), m_PicOrg444->getAddr(eCmp::CB), m_PicOrg4XX->getStride(eCmp::CB), m_PicOrg444->getStride(eCmp::CB), m_PicOrg4XX->getWidth(eCmp::CB), m_PicOrg4XX->getHeight(eCmp::CB));
-      xPixelOps::DownsampleHV(m_PicOrg4XX->getAddr(eCmp::CR), m_PicOrg444->getAddr(eCmp::CR), m_PicOrg4XX->getStride(eCmp::CR), m_PicOrg444->getStride(eCmp::CR), m_PicOrg4XX->getWidth(eCmp::CR), m_PicOrg4XX->getHeight(eCmp::CR));
+      xPicYUV Temp422(m_PicOrg444->getSize(eCmp::LM), m_PicOrg444->getBitDepth(), eCrF::CF422, m_PicOrg444->getMargin());
+      Temp422.fill(0, eCmp::LM);
+
+      xPixelOpsSTD::DownsampleH_FIR(Temp422.getAddr(eCmp::CB), m_PicOrg444->getAddr(eCmp::CB), Temp422.getStride(eCmp::CB), m_PicOrg444->getStride(eCmp::CB), Temp422.getWidth(eCmp::CB), Temp422.getHeight(eCmp::CB), m_PicOrg444->getBitDepth());
+      xPixelOpsSTD::DownsampleH_FIR(Temp422.getAddr(eCmp::CR), m_PicOrg444->getAddr(eCmp::CR), Temp422.getStride(eCmp::CR), m_PicOrg444->getStride(eCmp::CR), Temp422.getWidth(eCmp::CR), Temp422.getHeight(eCmp::CR), m_PicOrg444->getBitDepth());
+
+      Temp422.extend(eMrgExt::Nearest);
+
+      xPixelOpsSTD::DownsampleV_FIR(m_PicOrg4XX->getAddr(eCmp::CB), Temp422.getAddr(eCmp::CB), m_PicOrg4XX->getStride(eCmp::CB), Temp422.getStride(eCmp::CB), m_PicOrg4XX->getWidth(eCmp::CB), m_PicOrg4XX->getHeight(eCmp::CB), m_PicOrg4XX->getBitDepth());
+      xPixelOpsSTD::DownsampleV_FIR(m_PicOrg4XX->getAddr(eCmp::CR), Temp422.getAddr(eCmp::CR), m_PicOrg4XX->getStride(eCmp::CR), Temp422.getStride(eCmp::CR), m_PicOrg4XX->getWidth(eCmp::CR), m_PicOrg4XX->getHeight(eCmp::CR), m_PicOrg4XX->getBitDepth());
     }
   }
 }
+
+
 void xAppJPEG::cvtYCbCrToRGB()
 {
   if(m_ChromaFormat == eCrF::CF444)
@@ -723,13 +738,21 @@ void xAppJPEG::cvtYCbCrToRGB()
   {
     if(m_ChromaFormat == eCrF::CF422)
     {
-      xPixelOps::UpsampleH(m_PicRec444->getAddr(eCmp::CB), m_PicRec4XX->getAddr(eCmp::CB), m_PicRec444->getStride(eCmp::CB), m_PicRec4XX->getStride(eCmp::CB), m_PicRec444->getWidth(eCmp::CB), m_PicRec444->getHeight(eCmp::CB));
-      xPixelOps::UpsampleH(m_PicRec444->getAddr(eCmp::CR), m_PicRec4XX->getAddr(eCmp::CR), m_PicRec444->getStride(eCmp::CR), m_PicRec4XX->getStride(eCmp::CR), m_PicRec444->getWidth(eCmp::CR), m_PicRec444->getHeight(eCmp::CR));
+      xPixelOpsSTD::UpsampleH_FIR(m_PicRec444->getAddr(eCmp::CB), m_PicRec4XX->getAddr(eCmp::CB), m_PicRec444->getStride(eCmp::CB), m_PicRec4XX->getStride(eCmp::CB), m_PicRec444->getWidth(eCmp::CB), m_PicRec444->getHeight(eCmp::CB), m_PicRec444->getBitDepth());
+      xPixelOpsSTD::UpsampleH_FIR(m_PicRec444->getAddr(eCmp::CR), m_PicRec4XX->getAddr(eCmp::CR), m_PicRec444->getStride(eCmp::CR), m_PicRec4XX->getStride(eCmp::CR), m_PicRec444->getWidth(eCmp::CR), m_PicRec444->getHeight(eCmp::CR), m_PicRec444->getBitDepth());
     }
     else //420
     {
-      xPixelOps::UpsampleHV(m_PicRec444->getAddr(eCmp::CB), m_PicRec4XX->getAddr(eCmp::CB), m_PicRec444->getStride(eCmp::CB), m_PicRec4XX->getStride(eCmp::CB), m_PicRec444->getWidth(eCmp::CB), m_PicRec444->getHeight(eCmp::CB));
-      xPixelOps::UpsampleHV(m_PicRec444->getAddr(eCmp::CR), m_PicRec4XX->getAddr(eCmp::CR), m_PicRec444->getStride(eCmp::CR), m_PicRec4XX->getStride(eCmp::CR), m_PicRec444->getWidth(eCmp::CR), m_PicRec444->getHeight(eCmp::CR));
+      xPicYUV Temp422(m_PicRec4XX->getSize(eCmp::LM), m_PicRec4XX->getBitDepth(), eCrF::CF422, m_PicRec4XX->getMargin());
+      Temp422.fill(0, eCmp::LM);
+
+      xPixelOpsSTD::UpsampleV_FIR(Temp422.getAddr(eCmp::CB), m_PicRec4XX->getAddr(eCmp::CB), Temp422.getStride(eCmp::CB), m_PicRec4XX->getStride(eCmp::CB), Temp422.getWidth(eCmp::CB), Temp422.getHeight(eCmp::CB), Temp422.getBitDepth());
+      xPixelOpsSTD::UpsampleV_FIR(Temp422.getAddr(eCmp::CR), m_PicRec4XX->getAddr(eCmp::CR), Temp422.getStride(eCmp::CR), m_PicRec4XX->getStride(eCmp::CR), Temp422.getWidth(eCmp::CR), Temp422.getHeight(eCmp::CR), Temp422.getBitDepth());
+
+      Temp422.extend(eMrgExt::Nearest);
+
+      xPixelOpsSTD::UpsampleH_FIR(m_PicRec444->getAddr(eCmp::CB), Temp422.getAddr(eCmp::CB), m_PicRec444->getStride(eCmp::CB), Temp422.getStride(eCmp::CB), m_PicRec444->getWidth(eCmp::CB), m_PicRec444->getHeight(eCmp::CB), m_PicRec444->getBitDepth());
+      xPixelOpsSTD::UpsampleH_FIR(m_PicRec444->getAddr(eCmp::CR), Temp422.getAddr(eCmp::CR), m_PicRec444->getStride(eCmp::CR), Temp422.getStride(eCmp::CR), m_PicRec444->getWidth(eCmp::CR), m_PicRec444->getHeight(eCmp::CR), m_PicRec444->getBitDepth());
     }
 
     m_PicRec444->swapBuffer(m_PicRec4XX, eCmp::LM);
@@ -740,6 +763,10 @@ void xAppJPEG::cvtYCbCrToRGB()
       m_PicRecRGB->getBitDepth(), eClrSpcLC::BT601);
   }
 }
+
+// ==============================================================================================================================================================================
+
+
 flt64V4 xAppJPEG::calcPicPSNR(const xPicP* Tst, const xPicP* Ref, bool AvoidInfPSNR)
 {
   assert(Ref != nullptr && Tst != nullptr);

@@ -35,6 +35,18 @@ public:
   static uint64 CountEqualMask (const uint16* Tst, const uint16* Ref, const uint16* Msk, int32 TstStride, int32 RefStride, int32 MskStride, int32 Width, int32 Height);
   static bool   CompareEqual   (const uint16* Tst, const uint16* Ref, int32 TstStride, int32 RefStride, int32 Width, int32 Height);
   static tStr   FindDiscrepancy(const uint16* Tst, const uint16* Ref, int32 TstStride, int32 RefStride, int32 Width, int32 Height, int32 MsgNumLimit);
+
+
+
+  // -------------------------------------------------------------------------------------------------------------------------------------
+  // RDOQ-RGB: decimation and interpolation FIR
+  // -------------------------------------------------------------------------------------------------------------------------------------
+  static void   DownsampleH_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth); // 444 -> 422
+  static void   DownsampleV_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth); // 422 -> 420
+
+  static void   UpsampleH_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth); // 444 -> 422
+  static void   UpsampleV_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth); // 422 -> 420
+  // -------------------------------------------------------------------------------------------------------------------------------------
 };
 
 //===============================================================================================================================================================================================================

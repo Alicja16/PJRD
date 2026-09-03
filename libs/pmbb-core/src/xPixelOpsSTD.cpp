@@ -234,6 +234,176 @@ void xPixelOpsSTD::ExtendMargin(uint16* Addr, int32 Stride, int32 Width, int32 H
     ::memcpy(Addr - (y + 1) * Stride, Addr, sizeof(uint16) * (Width + (Margin << 1)));
   }
 }
+
+
+
+
+// -------------------------------------------------------------------------------------------------------------------------------------
+// RDOQ-RGB: decimation and interpolation FIR
+// -------------------------------------------------------------------------------------------------------------------------------------
+
+void xPixelOpsSTD::DownsampleH_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth)
+{
+    const int32 MaxValue = xBitDepth2MaxValue(BitDepth);
+
+    for (int32 y = 0; y < DstHeight; y++)
+    {
+        for (int32 x = 0; x < DstWidth; x++)
+        {
+            const int32 SrcX = x << 1;
+
+            const int32 Sum =
+                5 * (int32)Src[SrcX - 5]
+                + 11 * (int32)Src[SrcX - 4]
+                - 21 * (int32)Src[SrcX - 3]
+                - 37 * (int32)Src[SrcX - 2]
+                + 70 * (int32)Src[SrcX - 1]
+                + 228 * (int32)Src[SrcX]
+                + 228 * (int32)Src[SrcX + 1]
+                + 70 * (int32)Src[SrcX + 2]
+                - 37 * (int32)Src[SrcX + 3]
+                - 21 * (int32)Src[SrcX + 4]
+                + 11 * (int32)Src[SrcX + 5]
+                + 5 * (int32)Src[SrcX + 6];
+
+            const int32 D = (Sum + 256) >> 9;
+
+            Dst[x] = (uint16)xClip<int32>(D, 0, MaxValue);
+        }
+
+        Src += SrcStride;
+        Dst += DstStride;
+    }
+}
+
+
+void xPixelOpsSTD::DownsampleV_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth)
+{
+    const int32 MaxValue = xBitDepth2MaxValue(BitDepth);
+
+    for (int32 y = 0; y < DstHeight; y++)
+    {
+        const int32 SrcY = y << 1;
+
+        const uint16* SrcRow = Src + SrcY * SrcStride;
+        uint16* DstRow = Dst + y * DstStride;
+
+        for (int32 x = 0; x < DstWidth; x++)
+        {
+            const int32 Sum =
+                5 * (int32)SrcRow[x - 5 * SrcStride]
+                + 11 * (int32)SrcRow[x - 4 * SrcStride]
+                - 21 * (int32)SrcRow[x - 3 * SrcStride]
+                - 37 * (int32)SrcRow[x - 2 * SrcStride]
+                + 70 * (int32)SrcRow[x - 1 * SrcStride]
+                + 228 * (int32)SrcRow[x]
+                + 228 * (int32)SrcRow[x + 1 * SrcStride]
+                + 70 * (int32)SrcRow[x + 2 * SrcStride]
+                - 37 * (int32)SrcRow[x + 3 * SrcStride]
+                - 21 * (int32)SrcRow[x + 4 * SrcStride]
+                + 11 * (int32)SrcRow[x + 5 * SrcStride]
+                + 5 * (int32)SrcRow[x + 6 * SrcStride];
+
+            const int32 D = (Sum + 256) >> 9;
+
+            DstRow[x] = (uint16)xClip<int32>(D, 0, MaxValue);
+        }
+    }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+void xPixelOpsSTD::UpsampleH_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth)
+{
+    const int32 MaxValue = xBitDepth2MaxValue(BitDepth);
+    const int32 SrcWidth = DstWidth >> 1;
+
+    for (int32 y = 0; y < DstHeight; y++)
+    {
+        for (int32 x = 0; x < SrcWidth; x++)
+        {
+            const int32 DstX = x << 1;
+
+            const int32 LeftSum =
+                5 * (int32)Src[x - 3]
+                - 21 * (int32)Src[x - 2]
+                + 70 * (int32)Src[x - 1]
+                + 228 * (int32)Src[x]
+                - 37 * (int32)Src[x + 1]
+                + 11 * (int32)Src[x + 2];
+
+            const int32 RightSum =
+                5 * (int32)Src[x + 3]
+                - 21 * (int32)Src[x + 2]
+                + 70 * (int32)Src[x + 1]
+                + 228 * (int32)Src[x]
+                - 37 * (int32)Src[x - 1]
+                + 11 * (int32)Src[x - 2];
+
+            const int32 LeftPixel = (LeftSum + 128) >> 8;
+            const int32 RightPixel = (RightSum + 128) >> 8;
+
+            Dst[DstX] = (uint16)xClip<int32>(LeftPixel, 0, MaxValue);
+            Dst[DstX + 1] = (uint16)xClip<int32>(RightPixel, 0, MaxValue);
+        }
+
+        Src += SrcStride;
+        Dst += DstStride;
+    }
+}
+
+void xPixelOpsSTD::UpsampleV_FIR(uint16* restrict Dst, const uint16* Src, int32 DstStride, int32 SrcStride, int32 DstWidth, int32 DstHeight, int32 BitDepth)
+{
+    const int32 MaxValue = xBitDepth2MaxValue(BitDepth);
+    const int32 SrcHeight = DstHeight >> 1;
+
+    for (int32 y = 0; y < SrcHeight; y++)
+    {
+        const int32 DstY = y << 1;
+
+        const uint16* SrcRow = Src + y * SrcStride;
+        uint16* DstTopRow = Dst + DstY * DstStride;
+        uint16* DstBottomRow = Dst + (DstY + 1) * DstStride;
+
+        for (int32 x = 0; x < DstWidth; x++)
+        {
+            const int32 TopSum =
+                3 * (int32)SrcRow[x - 3 * SrcStride]
+                - 16 * (int32)SrcRow[x - 2 * SrcStride]
+                + 67 * (int32)SrcRow[x - 1 * SrcStride]
+                + 227 * (int32)SrcRow[x]
+                - 32 * (int32)SrcRow[x + 1 * SrcStride]
+                + 7 * (int32)SrcRow[x + 2 * SrcStride];
+
+            const int32 BottomSum =
+                3 * (int32)SrcRow[x + 3 * SrcStride]
+                - 16 * (int32)SrcRow[x + 2 * SrcStride]
+                + 67 * (int32)SrcRow[x + 1 * SrcStride]
+                + 227 * (int32)SrcRow[x]
+                - 32 * (int32)SrcRow[x - 1 * SrcStride]
+                + 7 * (int32)SrcRow[x - 2 * SrcStride];
+
+            const int32 TopPixel = (TopSum + 128) >> 8;
+            const int32 BottomPixel = (BottomSum + 128) >> 8;
+
+            DstTopRow[x] = (uint16)xClip<int32>(TopPixel, 0, MaxValue);
+
+            DstBottomRow[x] = (uint16)xClip<int32>(BottomPixel, 0, MaxValue);
+        }
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
 void xPixelOpsSTD::AOS4fromSOA3(uint16* restrict DstABCD, const uint16* SrcA, const uint16* SrcB, const uint16* SrcC, uint16 ValueD, int32 DstStride, int32 SrcStride, int32 Width, int32 Height)
 {
   for(int32 y=0; y<Height; y++)
