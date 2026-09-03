@@ -45,8 +45,8 @@ protected:
   // ==============================================================================================
   // RGB
   // ==============================================================================================
-  flt64 m_LambdaRGB;
-  int32 RGB_weights[3] = {1,6,1};
+  flt64   m_LambdaRGB;
+  flt64V4 m_WeightsRGB = {1,6,1,0};
   // ==============================================================================================
 
   //Tools
@@ -176,7 +176,7 @@ protected:
   void   xOptQuantHuffMCURGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const uint16* RGBPtrV[], const int32 StrideRGB, int32 MCU_Idx);
 
   void   xOptQuantHuffTestCandtsBlockRGB(int16* OptCoeffQuantScan, const std::pair<const uint16*, eCmp> RecSamplesBlockV[2], const uint16 SamplesOrgRGB[3][4*c_BA], const xCmpCandtParams& Params);
-  uint64 xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][4*c_BA]);
+  flt64  xCalcDistRGB(const std::pair<const uint16*, eCmp> SamplesRecYCbCr[3], const uint16 SamplesOrgRGB[3][4*c_BA]);
   
   void   xOptQuantPicRGB(int16* OptCoeffsQuantScanV[], const int16* CoeffsQuantScanV[], const int16* CoeffsTransOrgV[], const xPicP* PictureRGB) { xOptQuantHuffPicRGB(OptCoeffsQuantScanV, CoeffsQuantScanV, CoeffsTransOrgV, PictureRGB); }
 

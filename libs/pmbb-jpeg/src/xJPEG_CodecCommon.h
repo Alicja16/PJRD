@@ -28,6 +28,7 @@ protected:
   int32   m_PictureWidth    = NOT_VALID;
   int32   m_PictureHeight   = NOT_VALID;
   eCrF    m_ChromaFormat    = eCrF::INVALID;
+  int32   m_BitDepth        = 8;
   int32   m_NumOfComponents = NOT_VALID;
   int32   m_ProcessChroma   = false;
 
@@ -132,12 +133,14 @@ public:
   //----------------------------------------------------------------------------------------------------------------------------------------------------------
   // for MCU areas
   //----------------------------------------------------------------------------------------------------------------------------------------------------------
-  static inline void loadEntireArea(uint16* restrict Dst, const uint16* Src, const int32 SrcStride, const int32 MCUWidth, const int32 MCUHeight)
+
+  //hmm.. loadRectangle
+  static inline void loadEntireArea(uint16* restrict Dst, const uint16* Src, const int32 SrcStride, const int32 Width, const int32 Height)
   {
-      for (int32 y = 0; y < MCUHeight; y++)
+      for (int32 y = 0; y < Height; y++)
       {
-          ::memcpy(Dst, Src, MCUWidth * sizeof(uint16));
-          Src += SrcStride; Dst += MCUWidth;
+          ::memcpy(Dst, Src, Width * sizeof(uint16));
+          Src += SrcStride; Dst += Width;
       }
   }
 

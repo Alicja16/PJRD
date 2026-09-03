@@ -21,6 +21,8 @@ public:
   static constexpr int32 c_Log2BlockArea = 3 << 1;
   static constexpr int32 c_BlockArea     = c_BlockSize * c_BlockSize;
 
+  static constexpr int32 c_MaxMCU_Area   = 4 * c_BlockArea; //maximum area of luma MCU
+
   static constexpr int32 c_NumCodeLenghts      = 16;
   static constexpr int32 c_MaxNumCodeSymbolsDC = 16;
   static constexpr int32 c_MaxNumCodeSymbolsAC = 256;
